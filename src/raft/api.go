@@ -87,21 +87,21 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	}
 
 	reply.ServerID = server
-	rf.log(dVote, "get RequestVote response from S%v:%v", server, *reply)
+	rf.log(dVote, "get RequestVote response from S%v: %+v", server, *reply)
 	rf.requestVoteReplyCh <- reply
 	return true
 }
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	rf.log(dVote, "got RequestVote rpc from server:%v: ", args.CandidateId, *args)
+	rf.log(dVote, "got RequestVote rpc from server:%v: %+v", args.CandidateId, *args)
 	ch := pushRpcChan(args, reply, rf.requestVoteReqCh)
 	err := <-ch
 	if err != nil {
 		reply.VoteGranted = false
 		reply.Term, _ = rf.GetState()
 	}
-	rf.log(dVote, "finish RequestVote rpc from server:%v, reply: %v", args.CandidateId, *reply)
+	rf.log(dVote, "finish RequestVote rpc from server:%v, reply: %+v", args.CandidateId, *reply)
 }
 
 type AppendEntriesArgs struct {

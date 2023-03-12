@@ -28,6 +28,19 @@ func (s State) String() string {
 	}
 }
 
+func (s State) ShortString() string {
+	switch s {
+	case Follower:
+		return "Follow"
+	case Candidate:
+		return "Candid"
+	case Leader:
+		return "Leader"
+	default:
+		panic("set error")
+	}
+}
+
 func (rf *Raft) GetStateHandler() StateHandler {
 	switch rf.getState() {
 	case Follower:
