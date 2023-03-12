@@ -1,13 +1,15 @@
 package raft
 
-import "log"
-
-// Debugging
-const Debug = false
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug {
-		log.Printf(format, a...)
-	}
-	return
+func (rf *Raft) goF(f func(), name string) {
+	// Your code here (2A, 2B).
+	rf.wg.Add(1)
+	go func() {
+		//rf.log(dInfo,"%v started",name)
+		f()
+		rf.wg.Done()
+		//rf.log(dInfo,"%v finished",name)
+	}()
 }
+
+//var leaderHeartBeatStartTicker *time.Ticker = time.NewTicker(LeaderHeartBeatDuration)
+//var followerHeartBeatCheckTicker *time.Ticker = time.NewTicker(LeaderHeartBeatDuration)

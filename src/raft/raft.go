@@ -18,37 +18,15 @@ package raft
 //
 
 import (
-//	"bytes"
+	"math/rand"
+	//	"bytes"
 	"sync"
 	"sync/atomic"
+	"time"
 
-//	"6.824/labgob"
+	//	"6.824/labgob"
 	"6.824/labrpc"
 )
-
-
-//
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
-//
-// in part 2D you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh, but set CommandValid to false for these
-// other uses.
-//
-type ApplyMsg struct {
-	CommandValid bool
-	Command      interface{}
-	CommandIndex int
-
-	// For 2D:
-	SnapshotValid bool
-	Snapshot      []byte
-	SnapshotTerm  int
-	SnapshotIndex int
-}
 
 //
 // A Go object implementing a single Raft peer.
@@ -64,16 +42,60 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-}
+	//todo 暂时设定只有主协程可以写，其他的只可以读，防止多个协程之间写出错（例如由大变小）
+	currentTerm int32 //当前的轮次
 
-// return currentTerm and whether this server
-// believes it is the leader.
-func (rf *Raft) GetState() (int, bool) {
+	//todo 这个字段暂且不加锁了，当前之后主协程访问，之后看情况加锁
+	votedFor int //本轮投给谁了，注意这个字段需要和leader保持相同
 
-	var term int
-	var isleader bool
-	// Your code here (2A).
-	return term, isleader
+	//保护下面的几个字段
+	leaderMu      sync.Mutex
+	currentLeader int
+
+	//log 有关
+	logMu sync.Mutex  //下面几个字段日志相关的字段的锁
+	logs  []*LogEntry //初始为1
+	//下面两个字段的关系可以见 https://www.zhihu.com/question/61726492/answer/190736554
+	//commitIndex 是本raft感知到(commit)的最后一条log entry的index
+	//lastApplied 是本raft所在的状态机器最后一条应用的index
+	commitIndex int //已经提交的最后一条log entry的index
+	commitTerm  int //已经提交的最后一条log entry的term
+
+	lastApplied int //已经被state machine应用的最后一条log entry的index
+
+	//leader使用
+	nextIndex  []int //index为peer的index，value为下一个应该发送的log entry的下标（开始为leader的last log + 1）
+	matchIndex []int //index为peer的index，value为该peer已经复制(replicated)的log entry的下标（开始为0）
+
+	//日志有关
+	//log func(topic logTopic,format string, a ...interface{})
+
+	//go routine相关
+	wg *sync.WaitGroup
+
+	//当前状态，只允许主go程set，其他go程可以get
+	state                     State
+	CandidateStateHandlerInst CandidateStateHandler
+	LeaderStateHandlerInst    LeaderStateHandler
+	FollowerStateHandlerInst  FollowerStateHandler
+	//因为只在主go程中访问，所以不需要加锁
+	CurrentStateHandler StateHandler
+
+	//心跳/附加日志rpc
+	lastHeartBeatTime    int64                    //上次heartBeat的时间
+	needHeartBeat        chan struct{}            //需要发送心跳
+	appendEntriesReqCh   chan *rpcChMsg           //附加日志请求chan
+	appendEntriesReplyCh chan *AppendEntriesReply //附加日志回复chan
+
+	//竞选rpc相关
+	requestVoteReqCh   chan *rpcChMsg
+	requestVoteReplyCh chan *RequestVoteReply //请求投票回复chan
+	//voterMu sync.Mutex
+	//todo 只在主线程统计，所以暂时不用lock了
+	needElectionCh        chan struct{} //需要参与竞选
+	voter                 map[int]struct{}
+	candidateOverTimeTick <-chan time.Time
+	leastVoterNum         int
 }
 
 //
@@ -91,7 +113,6 @@ func (rf *Raft) persist() {
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
 }
-
 
 //
 // restore previously persisted state.
@@ -115,7 +136,6 @@ func (rf *Raft) readPersist(data []byte) {
 	// }
 }
 
-
 //
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
 // have more recent info since it communicate the snapshot on applyCh.
@@ -135,65 +155,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 
 }
-
-
-//
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
-//
-type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
-}
-
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
-type RequestVoteReply struct {
-	// Your data here (2A).
-}
-
-//
-// example RequestVote RPC handler.
-//
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
-}
-
-//
-// example code to send a RequestVote RPC to a server.
-// server is the index of the target server in rf.peers[].
-// expects RPC arguments in args.
-// fills in *reply with RPC reply, so caller should
-// pass &reply.
-// the types of the args and reply passed to Call() must be
-// the same as the types of the arguments declared in the
-// handler function (including whether they are pointers).
-//
-// The labrpc package simulates a lossy network, in which servers
-// may be unreachable, and in which requests and replies may be lost.
-// Call() sends a request and waits for a reply. If a reply arrives
-// within a timeout interval, Call() returns true; otherwise
-// Call() returns false. Thus Call() may not return for a while.
-// A false return can be caused by a dead server, a live server that
-// can't be reached, a lost request, or a lost reply.
-//
-// Call() is guaranteed to return (perhaps after a delay) *except* if the
-// handler function on the server side does not return.  Thus there
-// is no need to implement your own timeouts around Call().
-//
-// look at the comments in ../labrpc/labrpc.go for more details.
-//
-// if you're having trouble getting RPC to work, check that you've
-// capitalized all field names in structs passed over RPC, and
-// that the caller passes the address of the reply struct with &, not
-// the struct itself.
-//
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	return ok
-}
-
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
@@ -215,7 +176,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
 
 	return index, term, isLeader
 }
@@ -241,16 +201,17 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-// The ticker go routine starts a new election if this peer hasn't received
-// heartsbeats recently.
-func (rf *Raft) ticker() {
-	for rf.killed() == false {
+func (rf *Raft) setHeartBeat() {
+	now := time.Now().UnixMicro()
+	atomic.StoreInt64(&rf.lastHeartBeatTime, now)
+}
 
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
-
+func (rf *Raft) heartBeatExpire() bool {
+	lastTime := time.UnixMicro(atomic.LoadInt64(&rf.lastHeartBeatTime))
+	if lastTime.Add(getFollowerHeartBeatExpireTime()).Before(time.Now()) {
+		return true
 	}
+	return false
 }
 
 //
@@ -270,15 +231,99 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.initHandler()
+	rf.setState(Follower)
 
+	rf.needElectionCh = make(chan struct{})
+	rf.requestVoteReqCh = make(chan *rpcChMsg, 100)
+	rf.logs = make([]*LogEntry, 0)
 	// Your initialization code here (2A, 2B, 2C).
+
+	rand.Seed(makeSeed())
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	// start ticker goroutine to start elections
-	go rf.ticker()
+	//rf.stopCandidateCh = make(chan struct{},1)
 
+	rf.leastVoterNum = len(peers)/2 + 1
+
+	rf.requestVoteReplyCh = make(chan *RequestVoteReply, len(rf.peers))
+
+	// start startFollowerHeartBeatCheckTicker goroutine to start elections
+
+	rf.wg = &sync.WaitGroup{}
+
+	rf.goF(rf.startFollowerHeartBeatCheckTicker, "FollowerHeartBeatCheckTicker")
+	rf.goF(rf.startLeaderHeartBeatTicker, "LeaderHeartBeatTicker")
+	rf.goF(rf.startMainLoop, "Main Loop")
 
 	return rf
+}
+
+func (rf *Raft) startMainLoop() {
+	for !rf.killed() {
+		select {
+		//处理请求投票rpc
+		case chMsg := <-rf.requestVoteReqCh:
+			var req *RequestVoteArgs
+			var resp *RequestVoteReply
+			var ok bool
+			if req, ok = chMsg.RpcReq.(*RequestVoteArgs); !ok {
+				panic("program fault")
+			}
+			if resp, ok = chMsg.RpcResp.(*RequestVoteReply); !ok {
+				panic("program fault")
+			}
+			err := rf.CurrentStateHandler.HandleRequestVote(req, resp)
+			chMsg.finish(err)
+
+		//请求追加日志条目（心跳）rpc
+		case chMsg := <-rf.appendEntriesReqCh:
+			var req *AppendEntriesArgs
+			var resp *AppendEntriesReply
+			var ok bool
+			if req, ok = chMsg.RpcReq.(*AppendEntriesArgs); !ok {
+				panic("program fault")
+			}
+			if resp, ok = chMsg.RpcResp.(*AppendEntriesReply); !ok {
+				panic("program fault")
+			}
+			err := rf.CurrentStateHandler.HandleAppendEntries(req, resp)
+			chMsg.finish(err)
+
+		//来自定时器的心跳超时，应该开启选举事件
+		case <-rf.needElectionCh:
+			rf.CurrentStateHandler.HandleNeedElection()
+
+		//来自定时器的leader开始发送心跳事件
+		case <-rf.needHeartBeat:
+			rf.CurrentStateHandler.LeaderHeartBeat()
+
+		//请求投票rpc收到回复
+		case reply := <-rf.requestVoteReplyCh:
+			rf.CurrentStateHandler.OnRequestVoteReply(reply)
+
+		//竞选者tick超时事件
+		case <-rf.candidateOverTimeTick:
+			rf.CurrentStateHandler.OnCandidateOverTimeTick()
+
+		default:
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+}
+
+//appendLog commit一条日志，index为该日志的index。注意日志中的Term字段不应该为0
+func (rf *Raft) appendLog(entry *LogEntry, index int) {
+	rf.logMu.Lock()
+	defer rf.logMu.Unlock()
+
+	if entry == nil || entry.Term == 0 {
+		panic("error append log")
+	}
+
+	rf.logs = append(rf.logs, entry)
+	rf.commitTerm = entry.Term
+	rf.commitIndex = index
 }
