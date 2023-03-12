@@ -68,9 +68,10 @@ func (rf FollowerStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *R
 
 	//如果我和竞选者的term一样大，那么看看有没有voted for，
 	//如果当前轮次已经投票了，且不是竞选者，那么不投竞选者
-	if myTerm == args.Term && (!rf.noVoted() || rf.getVotedFor() != args.CandidateId) {
+	if myTerm == args.Term && !rf.noVoted() && rf.getVotedFor() != args.CandidateId {
 		reply.VoteGranted = false
 		reply.Term = myTerm
+		return nil
 	}
 
 	//如果竞选者的term较大/当前轮次没有投票/当前轮次投的就是该竞选者，那么设置我的term跟他一样，并且给他投票

@@ -247,6 +247,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	//rf.stopCandidateCh = make(chan struct{},1)
 
 	rf.leastVoterNum = len(peers)/2 + 1
+	rf.log(dInfo,"request voterNum:%v",rf.leastVoterNum)
 
 	rf.requestVoteReplyCh = make(chan *RequestVoteReply, len(rf.peers))
 
@@ -309,7 +310,7 @@ func (rf *Raft) startMainLoop() {
 			rf.CurrentStateHandler.OnCandidateOverTimeTick()
 
 		default:
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }

@@ -71,6 +71,7 @@ func (rf LeaderStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *Req
 	if myTerm < args.Term {
 		rf.setState(Follower)
 		rf.setTerm(args.Term)
+		rf.setVoted(args.CandidateId)
 		reply.Term = args.Term
 		reply.VoteGranted = true
 		return nil

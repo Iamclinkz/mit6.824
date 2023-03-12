@@ -67,10 +67,10 @@ func (rf CandidateStateHandler) OnRequestVoteReply(reply *RequestVoteReply) {
 	}
 
 	//对方成功给我们投票
-	rf.log(dVote, "receive vote from server:%v", reply.ServerID)
+	rf.log(dVote, "receive vote from server:%v, current voter:%v", reply.ServerID, len(rf.voter))
 	rf.voter[reply.ServerID] = struct{}{}
 	if len(rf.voter) >= rf.leastVoterNum {
-		rf.log(dVote, "I am the new leader")
+		rf.log(dLeader, "I am the new leader")
 	}
 	rf.setState(Leader)
 }
@@ -136,6 +136,7 @@ func (rf CandidateStateHandler) HandleNeedElection() {
 	}
 
 	rf.voter[rf.me] = struct{}{}
+	rf.setVoted(rf.me)
 
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
