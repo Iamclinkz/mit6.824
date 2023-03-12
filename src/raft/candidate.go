@@ -45,6 +45,7 @@ func (rf CandidateStateHandler) OnRequestVoteReply(reply *RequestVoteReply) {
 	if !reply.VoteGranted {
 		//如果不成功，并且对方的term比我们当前的高，那么直接退出
 		if reply.Term > myTerm {
+			rf.setTerm(reply.Term)
 			rf.setState(Follower)
 		}
 

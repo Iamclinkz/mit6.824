@@ -64,6 +64,6 @@ func Debug(topic logTopic, format string, a ...interface{}) {
 }
 
 func (rf *Raft) log(topic logTopic, format string, a ...interface{}) {
-	prefix := fmt.Sprintf("S%d T:%d ", rf.me, rf.getTerm())
+	prefix := fmt.Sprintf("S%d T:%d State:%v", rf.me, rf.getTerm(), rf.getState().String())
 	Debug(topic, prefix+format, a...)
 }
