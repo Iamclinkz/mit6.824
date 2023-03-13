@@ -41,10 +41,14 @@ func (rf FollowerStateHandler) HandleAppendEntries(args *AppendEntriesArgs, repl
 		rf.setTerm(args.Term)
 	}
 
-	//如果是心跳
-	if args.Entries == nil {
-		rf.setHeartBeat()
-	}
+	////如果是心跳
+	//if args.Entries == nil {
+	//
+	//
+	//}
+
+	rf.log(dLog, "receive heartBeat from: %v", args.LeaderId)
+	rf.setHeartBeat()
 
 	reply.Success = true
 	reply.Term = args.Term
@@ -81,7 +85,7 @@ func (rf FollowerStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *R
 
 	reply.VoteGranted = true
 	reply.Term = args.Term
-	rf.setVoted(args.CandidateId)
+	rf.setVotedFor(args.CandidateId)
 	//myLastLogIdx := rf.getLastCommitIdx()
 	//myLastLogTerm := rf.getLastCommitTerm()
 

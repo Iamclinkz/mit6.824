@@ -62,6 +62,7 @@ func (rf LeaderStateHandler) HandleAppendEntries(args *AppendEntriesArgs, reply 
 }
 
 func (rf LeaderStateHandler) LeaderHeartBeat() {
+	rf.log(dLeader, "send heartbeat to other server...")
 	rf.sendHeartBeat()
 }
 
@@ -71,7 +72,7 @@ func (rf LeaderStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *Req
 	if myTerm < args.Term {
 		rf.setState(Follower)
 		rf.setTerm(args.Term)
-		rf.setVoted(args.CandidateId)
+		rf.setVotedFor(args.CandidateId)
 		reply.Term = args.Term
 		reply.VoteGranted = true
 		return nil

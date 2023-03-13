@@ -67,12 +67,13 @@ func (rf CandidateStateHandler) OnRequestVoteReply(reply *RequestVoteReply) {
 	}
 
 	//对方成功给我们投票
-	rf.log(dVote, "receive vote from server:%v, current voter:%v", reply.ServerID, len(rf.voter))
 	rf.voter[reply.ServerID] = struct{}{}
+	voters := make([]int, len(rf.voter))
+	rf.log(dVote, "receive vote from server:%v, current voter:%v, voters:%v", reply.ServerID, voters)
 	if len(rf.voter) >= rf.leastVoterNum {
 		rf.log(dLeader, "I am the new leader")
+		rf.setState(Leader)
 	}
-	rf.setState(Leader)
 }
 
 func (rf CandidateStateHandler) HandleAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) error {
@@ -81,12 +82,7 @@ func (rf CandidateStateHandler) HandleAppendEntries(args *AppendEntriesArgs, rep
 	//如果自己的term比较小/收到了新的领导人的心跳，那么从candidate变回follower
 	if myTerm <= args.Term {
 		rf.setTerm(args.Term)
-
 		rf.setState(Follower)
-		//select {
-		//case rf.stopCandidateCh <- struct{}{}:
-		//default:
-		//}
 
 		reply.Success = true
 		reply.Term = args.Term
@@ -116,6 +112,7 @@ func (rf CandidateStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *
 		rf.setState(Follower)
 		reply.VoteGranted = true
 		reply.Term = args.Term
+		rf.setVotedFor(args.CandidateId)
 		return nil
 	}
 
@@ -136,7 +133,7 @@ func (rf CandidateStateHandler) HandleNeedElection() {
 	}
 
 	rf.voter[rf.me] = struct{}{}
-	rf.setVoted(rf.me)
+	rf.setVotedFor(rf.me)
 
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {

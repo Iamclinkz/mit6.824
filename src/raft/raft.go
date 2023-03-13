@@ -243,11 +243,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.appendEntriesReqCh = make(chan *rpcChMsg)
+	rf.needHeartBeat = make(chan struct{})
 
 	//rf.stopCandidateCh = make(chan struct{},1)
 
 	rf.leastVoterNum = len(peers)/2 + 1
-	rf.log(dInfo,"request voterNum:%v",rf.leastVoterNum)
+	rf.log(dInfo, "request voterNum:%v", rf.leastVoterNum)
 
 	rf.requestVoteReplyCh = make(chan *RequestVoteReply, len(rf.peers))
 

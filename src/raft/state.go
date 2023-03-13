@@ -141,7 +141,7 @@ func (rf *Raft) getLeader() int {
 	return rf.currentLeader
 }
 
-func (rf *Raft) setVoted(votedFor int) {
+func (rf *Raft) setVotedFor(votedFor int) {
 	rf.votedFor = votedFor
 }
 
