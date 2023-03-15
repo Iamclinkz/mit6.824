@@ -26,12 +26,12 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 		newNextIndex := rf.nextIndex[peerID] + len(msg.args.Entries)
 
 		if newMatchIndex != rf.matchIndex[peerID]{
-			rf.log(dLeader,"S%v match log %v to %v",rf.matchIndex[peerID] + 1,newMatchIndex)
+			rf.log(dLeader,"S%v match log %v to %v",msg.serverID,rf.matchIndex[peerID] + 1,newMatchIndex)
 			rf.matchIndex[peerID] = newMatchIndex
 		}
 
 		if newNextIndex != rf.nextIndex[peerID]{
-			rf.log(dLeader,"S%v success append log %v to %v",rf.nextIndex[peerID] + 1,newNextIndex)
+			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID] + 1,newNextIndex)
 			rf.nextIndex[peerID] = newNextIndex
 		}
 
