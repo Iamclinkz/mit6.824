@@ -24,7 +24,9 @@ type StateHandler interface {
 	//OnCandidateOverTimeTick 当选举时钟超时
 	OnCandidateOverTimeTick()
 
-	OnAppendEntriesReply(reply *AppendEntriesReply)
+	OnAppendEntriesReply(reply *AppendEntriesReplyMsg)
+
+	OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh)
 }
 
 //StateHandlerBase 内部持有了三种handler共用的结构

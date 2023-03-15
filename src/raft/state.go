@@ -114,29 +114,44 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) getLastCommitIdx() int {
-	rf.logMu.Lock()
-	defer rf.logMu.Unlock()
+	//rf.logMu.Lock()
+	//defer rf.logMu.Unlock()
 
 	return rf.commitIndex
 }
 
+func (rf *Raft) setLastCommitIdx(idx int) {
+	//rf.logMu.Lock()
+	//defer rf.logMu.Unlock()
+
+	rf.commitIndex = idx
+}
+
 func (rf *Raft) getLastCommitTerm() int {
-	rf.logMu.Lock()
-	defer rf.logMu.Unlock()
+	//rf.logMu.Lock()
+	//defer rf.logMu.Unlock()
 
 	return rf.commitTerm
 }
 
+func (rf *Raft) getLastLogEntryTerm() int {
+	return rf.logs[len(rf.logs) - 1].Term
+}
+
+func (rf *Raft) getLastLogEntryIndex() int {
+	return len(rf.logs) - 1
+}
+
 func (rf *Raft) setLeader(leaderID int) {
-	rf.leaderMu.Lock()
-	defer rf.leaderMu.Unlock()
+	//rf.leaderMu.Lock()
+	//defer rf.leaderMu.Unlock()
 
 	rf.currentLeader = leaderID
 }
 
 func (rf *Raft) getLeader() int {
-	rf.leaderMu.Lock()
-	defer rf.leaderMu.Unlock()
+	//rf.leaderMu.Lock()
+	//defer rf.leaderMu.Unlock()
 
 	return rf.currentLeader
 }

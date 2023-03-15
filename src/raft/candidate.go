@@ -8,7 +8,11 @@ type CandidateStateHandler struct {
 	StateHandlerBase
 }
 
-func (rf CandidateStateHandler) OnAppendEntriesReply(reply *AppendEntriesReply) {
+func (rf CandidateStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
+	commandWithNotify.finishWithError()
+}
+
+func (rf CandidateStateHandler) OnAppendEntriesReply(reply *AppendEntriesReplyMsg) {
 	return
 }
 
@@ -69,7 +73,13 @@ func (rf CandidateStateHandler) OnRequestVoteReply(reply *RequestVoteReply) {
 	//对方成功给我们投票
 	rf.voter[reply.ServerID] = struct{}{}
 	voters := make([]int, len(rf.voter))
-	rf.log(dVote, "receive vote from server:%v, current voter:%v, voters:%v", reply.ServerID, voters)
+	idx := 0
+	for serverID, _ := range rf.voter {
+		voters[idx] = serverID
+		idx++
+	}
+	rf.log(dVote, "receive vote from S%v, current voters:%v",
+		reply.ServerID, voters)
 	if len(rf.voter) >= rf.leastVoterNum {
 		rf.log(dLeader, "I am the new leader")
 		rf.setState(Leader)
@@ -80,15 +90,16 @@ func (rf CandidateStateHandler) HandleAppendEntries(args *AppendEntriesArgs, rep
 	myTerm := rf.getTerm()
 
 	//如果自己的term比较小/收到了新的领导人的心跳，那么从candidate变回follower
+	//注：如果发来心跳的leader的term比较大，那么这个不用说，肯定是认对方
+	//如果发来心跳的leader的term和我们相同，那么对方在本term已经拿到了超过半数的选票，自己肯定赢不了，所以认对方。
+	//因为对方肯定本term拿到了足够多的选票了，所以不需要再验证log entry是否比我新了
 	if myTerm <= args.Term {
 		rf.setTerm(args.Term)
 		rf.setState(Follower)
-
-		reply.Success = true
-		reply.Term = args.Term
-		return nil
+		return rf.CurrentStateHandler.HandleAppendEntries(args,reply)
 	}
 
+	//如果我的比较大，不承认对方
 	reply.Success = false
 	reply.Term = myTerm
 	return nil
@@ -105,10 +116,6 @@ func (rf CandidateStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *
 	if myTerm < args.Term {
 		rf.setTerm(args.Term)
 
-		//select {
-		//case rf.stopCandidateCh <- struct{}{}:
-		//default:
-		//}
 		rf.setState(Follower)
 		reply.VoteGranted = true
 		reply.Term = args.Term
@@ -130,6 +137,8 @@ func (rf CandidateStateHandler) HandleNeedElection() {
 	req := &RequestVoteArgs{
 		Term:        myTerm,
 		CandidateId: rf.me,
+		LastLogIndex: rf.getLastLogEntryIndex(),
+		LastLogTerm: rf.getLastLogEntryTerm(),
 	}
 
 	rf.voter[rf.me] = struct{}{}

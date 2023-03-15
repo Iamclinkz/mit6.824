@@ -25,6 +25,45 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type CommandWithNotifyCh struct {
+	command interface{}
+	notifyCh chan *CommandNotify	//如果成功放到leader的logs中，那么返回index，否则返回-1
+}
+
+type CommandNotify struct {
+	ok	bool
+	term int
+	idx int
+}
+
+//pushCommand 副go程接受的来自客户端的command，扔给主go程处理
+func (rf *Raft) pushCommand(command interface{})chan *CommandNotify{
+	commandWithNotifyCh := &CommandWithNotifyCh{
+		command:  command,
+		notifyCh: make(chan *CommandNotify,1),
+	}
+	rf.commandCh <- commandWithNotifyCh
+
+	return commandWithNotifyCh.notifyCh
+}
+
+//finishWithError 主go程出错（例如当前状态不对），给客户端返回错误
+func (c *CommandWithNotifyCh)finishWithError(){
+	c.notifyCh <- &CommandNotify{
+		term: -1,
+		idx:   -1,
+		ok:    false,
+	}
+}
+
+func (c *CommandWithNotifyCh)finishWithOK(term,idx int){
+	c.notifyCh <- &CommandNotify{
+		term: term,
+		idx:   idx,
+		ok:    true,
+	}
+}
+
 type LogEntry struct {
 	Command interface{}
 	//本LogEntry中的Command字段，被leader接受的时候，leader的term
@@ -108,30 +147,86 @@ type AppendEntriesArgs struct {
 	// Your data here (2A, 2B).
 	Term         int         //leader当前term
 	LeaderId     int         //leader的id
-	PrevLogIndex int         //紧邻新日志条目之前的那个日志条目的索引
-	PrevLogTerm  int         //紧邻新日志条目之前的那个日志条目的任期
-	Entries      []*LogEntry //需要被保存的,新的日志条目
-	LeaderCommit int         //领导人的已知已提交的最高的日志条目的索引
+	PrevLogIndex int         //紧邻第一个日志条目（即Entries[0]）之前的那个日志条目的索引，指的是rf.logs的下标
+	PrevLogTerm  int         //紧邻第一个日志条目（即Entries[0]）之前的那个日志条目的任期，指的是rf.logs的下标
+	Entries      []*LogEntry //需要被保存的,新的日志条目。规定如果不需要发任何东西的话，这个字段为nil
+	LeaderCommit int         //领导人的已知已提交的最高的日志条目的索引，注意指的是rf.logs的下标
 }
 
 type AppendEntriesReply struct {
 	// Your data here (2A, 2B).
 	Term     int  //自己的term
 	Success  bool //是否成功
-	ServerID int
 }
 
-//sendHeartBeat 给所有的server发送心跳，不阻塞
-func (rf *Raft) sendHeartBeat() {
-	req := &AppendEntriesArgs{
-		Term:     rf.getTerm(),
-		LeaderId: rf.me,
-	}
+type AppendEntriesReplyMsg struct {
+	args *AppendEntriesArgs
+	reply *AppendEntriesReply
+	serverID int
+}
 
+//sendHeartBeat 给所有的server发送带有日志目录的心跳，不阻塞
+func (rf *Raft) sendHeartBeat() {
+	//[ rf.minLogNextIndex , len(rf.logs) ) 的内容需要被拷贝缓存一手，再发送。防止主go程在发送期间对logs增删
+
+	logs := make([]*LogEntry,len(rf.logs))
+	copy(logs,rf.logs)
+
+	//if rf.minLogNextIndex == len(rf.logs){
+	//	//如果当前没有要发送的，发送简单的心跳
+	//	req := &AppendEntriesArgs{
+	//		Term:     rf.getTerm(),
+	//		LeaderId: rf.me,
+	//		LeaderCommit: rf.commitIndex,
+	//	}
+	//
+	//	for serverID, _ := range rf.peers {
+	//		if serverID != rf.me {
+	//			go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
+	//		}
+	//	}
+	//	return
+	//}
+
+	myTerm := rf.getTerm()
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
+			req := &AppendEntriesArgs{
+				Term:     myTerm,
+				LeaderId: rf.me,
+				LeaderCommit: rf.commitIndex,
+				//因为有了哨兵，所以这里可以不用判断当前有无日志，即时没有日志，这里也会发送
+				//PrevLogIndex = 0
+				//PrevLogTerm = rf.logs[0].Term (即-1)
+				//Entries = []
+				PrevLogIndex: rf.nextIndex[serverID] - 1,
+				PrevLogTerm: rf.logs[rf.nextIndex[serverID] - 1].Term,
+				Entries: logs[rf.nextIndex[serverID]:],
+			}
 			go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 		}
+	}
+	return
+}
+
+func (rf *Raft) genAppendEntriesArgs(serverID int)*AppendEntriesArgs{
+	//todo 仔细检查一下
+	var entries []*LogEntry
+	prevLogIndex := rf.nextIndex[serverID] - 1
+	prevLogTerm := -1
+
+	if prevLogIndex != 0{
+		prevLogTerm = rf.logs[prevLogIndex].Term
+		entries = rf.logs[rf.nextIndex[serverID]:]
+	}
+
+	return &AppendEntriesArgs{
+		Term:         rf.getTerm(),
+		LeaderId:     rf.me,
+		PrevLogIndex: prevLogIndex,
+		PrevLogTerm:  prevLogTerm,
+		Entries:      entries,
+		LeaderCommit: rf.getLastCommitIdx(),
 	}
 }
 
@@ -142,8 +237,13 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		return false
 	}
 
-	reply.ServerID = server
-	rf.appendEntriesReplyCh <- reply
+	msg := &AppendEntriesReplyMsg{
+		args:     args,
+		reply:    reply,
+		serverID: server,
+	}
+
+	rf.appendEntriesReplyCh <- msg
 	return true
 }
 
@@ -154,4 +254,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.Term, _ = rf.GetState()
 	}
+}
+
+func (rf *Raft) GenAppendEntriesArgs(serverID int)*AppendEntriesArgs {
+	return nil
 }
