@@ -22,17 +22,23 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	peerID := msg.serverID
 	if msg.reply.Success {
 		//如果成功，那么设置matchIndex和nextIndex
-		newMatchIndex := rf.nextIndex[peerID] + len(msg.args.Entries) - 1
-		newNextIndex := rf.nextIndex[peerID] + len(msg.args.Entries)
 
-		if newMatchIndex != rf.matchIndex[peerID]{
-			rf.log(dLeader,"S%v match log %v to %v",msg.serverID,rf.matchIndex[peerID] + 1,newMatchIndex)
-			rf.matchIndex[peerID] = newMatchIndex
+		//这里rpc可能乱序，所以需要保证一手小的不能覆盖大的
+		nextIndexFromReply := msg.args.PrevLogIndex + len(msg.args.Entries) + 1
+		nextMatchFromReply := nextIndexFromReply - 1
+
+		if nextIndexFromReply < rf.nextIndex[peerID] || nextMatchFromReply < rf.matchIndex[peerID]{
+			return
 		}
 
-		if newNextIndex != rf.nextIndex[peerID]{
-			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID],newNextIndex - 1)
-			rf.nextIndex[peerID] = newNextIndex
+		if nextIndexFromReply != rf.nextIndex[peerID]{
+			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID],nextIndexFromReply - 1)
+			rf.nextIndex[peerID] = nextIndexFromReply
+		}
+
+		if nextMatchFromReply != rf.matchIndex[peerID]{
+			rf.log(dLeader,"S%v match log %v to %v",msg.serverID,rf.matchIndex[peerID] + 1,nextMatchFromReply)
+			rf.matchIndex[peerID] = nextMatchFromReply
 		}
 
 		//rf.log(dLeader,"receive success reply from S%v, match:%v, next:%v",
