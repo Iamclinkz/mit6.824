@@ -36,67 +36,63 @@ func QuickSort(arr []int, left, right int) {
 	QuickSort(arr, i+1, right)
 }
 
-//termHashMap 用于快速索引某一个term对应到log的下标
-type termHashMap struct {
-	maxTerm int
-	nodes map[int]*termHashMapNode
-}
-
-type termHashMapNode struct {
+type logTermNode struct {
 	term int
-
-	//注意，[from,to]中的内容都是第term的
-	from int
-	to	int
+	cmds map[int]*CommandWithNotifyCh
+	next *logTermNode
 }
 
-//rebuild 重新构建termHashMap，entries[0,commitIndex]的内容一定和之前相同，所以不需要重新刷新
-func (m *termHashMap) rebuild(entries []*LogEntry,commitIndex int){
-	if entries == nil{
-		panic("entries should not be null")
-	}
-
-	if len(entries) == 0{
-		return
-	}
-
-	for m.maxTerm == entries[len(entries) - 1].Term{
-		return
-	}
-
-
+type logTermList struct {
+	head *logTermNode
 }
 
-//getTermBegin 辅助函数，获取 entries[len(entries) - 1].Term 是从哪里开始的
-func getTermBegin(entries []*LogEntry)int{
-	if entries == nil || len(entries) == 0{
-		panic("program fault!")
+//newLogTermList 创建一个有头节点的list
+func newLogTermList() *logTermList {
+	return &logTermList{
+		head: &logTermNode{
+			term: -1,
+			cmds: nil,
+			next: nil,
+		},
+	}
+}
+
+//removeTermTo 把term == to之前的全部cmds删除，并且返回error
+func (list *logTermList) removeTermTo(to int)  {
+	for list.head.next != nil && list.head.next.term != to{
+		for _, withNotifyCh := range list.head.next.cmds {
+			withNotifyCh.finishWithError()
+		}
+		list.head.next = list.head.next.next
+	}
+}
+
+//addTerm 只有leader调用，每次某个term自己上任leader的时候，需要保存一个当前term的map，
+func (list *logTermList) addTerm(term int)  {
+	p := list.head
+	for p.next != nil{
+		//防止写错，简单搞个check
+		if p.term == term{
+			panic("add term called more than once!")
+		}
+		p = p.next
 	}
 
-	term := entries[len(entries) - 1].Term
-	i := len(entries) - 1
-	for ;i >= 0; i-- {
-		if entries[i].Term != term{
-			break
+	p.next = &logTermNode{
+		term: term,
+		cmds: make(map[int]*CommandWithNotifyCh),
+		next: nil,
+	}
+}
+
+func (list *logTermList)commitLogToClient(term int,idx int){
+	p := list.head.next
+	for p != nil{
+		if p.term == term{
+			if cmd,ok := p.cmds[idx];ok{
+				cmd.finishWithOK(term,idx)
+			}
 		}
 	}
-
-	return i + 1
 }
 
-//getTermEnd 辅助函数，获取 entries[0].Term 是从哪里结束的
-func getTermEnd(entries []*LogEntry)int{
-	if entries == nil || len(entries) == 0{
-		panic("program fault!")
-	}
-
-	term := entries[0].Term
-	i := 0
-	for ;i < len(entries); i++ {
-		if entries[i].Term != term{
-			break
-		}
-	}
-
-	return i - 1
-}

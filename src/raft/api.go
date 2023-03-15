@@ -126,7 +126,12 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	}
 
 	reply.ServerID = server
-	rf.log(dTrace, "get RequestVote response from S%v: %+v", server, *reply)
+	if reply.VoteGranted{
+		rf.log(dTrace, "S%v voted:√", server)
+	}else{
+		rf.log(dTrace, "S%v voted:×", server)
+	}
+
 	rf.requestVoteReplyCh <- reply
 	return true
 }
@@ -194,7 +199,7 @@ func (rf *Raft) sendHeartBeat() {
 			req := &AppendEntriesArgs{
 				Term:     myTerm,
 				LeaderId: rf.me,
-				LeaderCommit: rf.commitIndex,
+				LeaderCommit: rf.getLastCommitIdx(),
 				//因为有了哨兵，所以这里可以不用判断当前有无日志，即时没有日志，这里也会发送
 				//PrevLogIndex = 0
 				//PrevLogTerm = rf.logs[0].Term (即-1)

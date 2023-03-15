@@ -390,7 +390,7 @@ func (rf *Raft) applyLog(to int) {
 			Command:       rf.logs[i].Command,
 			CommandIndex:  i,
 		}
-		rf.log(dClient,"apply log entry, index: %v", i - 1)
+		rf.log(dClient,"apply log entry, index: %v", i)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
@@ -467,14 +467,14 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs)bool{
 		//使用哨兵的好处是，即使客户端没有提供任何的日志，这里也能匹配成功
 		rf.logs = rf.logs[0:args.PrevLogIndex+1]
 		if oldLen != len(rf.logs){
-			rf.log(dLog2,"delete entry, oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+			rf.log(dLog2,"delete entry: %v -> %v",len(rf.logs),oldLen - 1)
 		}
 		oldLen = len(rf.logs)
 
 		rf.logs = append(rf.logs, args.Entries...)
 
 		if oldLen != len(rf.logs){
-			rf.log(dLog2,"add entry: oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+			rf.log(dLog2,"add entry: %v -> %v",oldLen, len(rf.logs) - 1)
 		}
 		return true
 	}

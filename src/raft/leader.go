@@ -22,10 +22,21 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	peerID := msg.serverID
 	if msg.reply.Success {
 		//如果成功，那么设置matchIndex和nextIndex
-		rf.matchIndex[peerID] = rf.nextIndex[peerID] + len(msg.args.Entries) - 1
-		rf.nextIndex[peerID] = rf.nextIndex[peerID] + len(msg.args.Entries)
-		rf.log(dLeader,"receive success reply from S%v, match:%v, next:%v",
-			peerID,rf.matchIndex[peerID],rf.nextIndex[peerID])
+		newMatchIndex := rf.nextIndex[peerID] + len(msg.args.Entries) - 1
+		newNextIndex := rf.nextIndex[peerID] + len(msg.args.Entries)
+
+		if newMatchIndex != rf.matchIndex[peerID]{
+			rf.log(dLeader,"S%v match log %v to %v",rf.matchIndex[peerID] + 1,newMatchIndex)
+			rf.matchIndex[peerID] = newMatchIndex
+		}
+
+		if newNextIndex != rf.nextIndex[peerID]{
+			rf.log(dLeader,"S%v success append log %v to %v",rf.nextIndex[peerID] + 1,newNextIndex)
+			rf.nextIndex[peerID] = newNextIndex
+		}
+
+		//rf.log(dLeader,"receive success reply from S%v, match:%v, next:%v",
+		//	peerID,rf.matchIndex[peerID],rf.nextIndex[peerID])
 		return
 	}
 
@@ -117,10 +128,10 @@ func (rf LeaderStateHandler) HandleAppendEntries(args *AppendEntriesArgs, reply 
 
 func (rf LeaderStateHandler) LeaderHeartBeat() {
 	if rf.updateCommitIndex(){
-		rf.applyLog(rf.commitIndex)
+		rf.applyLog(rf.getLastCommitIdx())
 	}
 
-	rf.log(dLeader, "send heartbeat to other server...")
+	rf.log(dTrace, "send heartbeat to other server...")
 	rf.sendHeartBeat()
 }
 

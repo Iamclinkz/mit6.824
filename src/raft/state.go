@@ -124,6 +124,10 @@ func (rf *Raft) setLastCommitIdx(idx int) {
 	//rf.logMu.Lock()
 	//defer rf.logMu.Unlock()
 
+	//简单做个check
+	if idx < rf.commitIndex{
+		rf.log(dError,"last commit index should not decrease: %v->%v",rf.commitIndex,idx)
+	}
 	rf.commitIndex = idx
 }
 
