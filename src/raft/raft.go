@@ -466,10 +466,16 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs)bool{
 		//匹配成功，直接将所有之后的日志删除，并且将发来的日志append到后面去
 		//使用哨兵的好处是，即使客户端没有提供任何的日志，这里也能匹配成功
 		rf.logs = rf.logs[0:args.PrevLogIndex+1]
-		rf.log(dLog2,"delete entry, oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+		if oldLen != len(rf.logs){
+			rf.log(dLog2,"delete entry, oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+		}
 		oldLen = len(rf.logs)
+
 		rf.logs = append(rf.logs, args.Entries...)
-		rf.log(dLog2,"add entry: oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+
+		if oldLen != len(rf.logs){
+			rf.log(dLog2,"add entry: oldLen -> newLen: %v -> %v",oldLen, len(rf.logs))
+		}
 		return true
 	}
 
