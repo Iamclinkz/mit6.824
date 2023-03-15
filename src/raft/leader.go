@@ -13,6 +13,12 @@ func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNot
 
 func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	myTerm := rf.getTerm()
+
+	if msg.reply.Term < myTerm{
+		//测试了10000次才发现的bug，如果我从leader->follower->leader，并且收到了之前的rpc，那么可能有问题
+		return
+	}
+
 	peerID := msg.serverID
 	if msg.reply.Success {
 		//如果成功，那么设置matchIndex和nextIndex

@@ -413,9 +413,9 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 
 	//如果不只有一个peer，那么选取len(rf.peers)/2 + 1的位置，作为当前的commitIndex
 	oldIdx := rf.getLastCommitIdx()
-	rf.setLastCommitIdx(tmp[len(rf.peers) / 2])
-
-	if oldIdx != rf.getLastCommitIdx(){
+	newCommitIdx := tmp[len(rf.peers)/2]
+	if newCommitIdx > rf.getLastCommitIdx(){
+		rf.setLastCommitIdx(newCommitIdx)
 		rf.log(dCommit,"update current commitIndex: %v -> %v",oldIdx,rf.getLastCommitIdx())
 		return true
 	}
@@ -456,12 +456,11 @@ func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIn
 
 //doAppendEntry 只能在主线程调用，处理来自当前承认的leader的appendEntry指令，返回是否成功
 func (rf *Raft) doAppendEntry(args *AppendEntriesArgs)bool{
-	if args.Entries == nil || len(args.Entries) == 0{
-		//如果是心跳包，那么直接return
-		return true
-	}
+	//if args.Entries == nil || len(args.Entries) == 0{
+	//	//如果是心跳包，那么直接return
+	//	return true
+	//}
 
-	//因为肯定是不失败的场景偏多，所以快速判断一下，如果失败，再回退
 	oldLen := len(rf.logs)
 	if args.PrevLogIndex < oldLen && rf.logs[args.PrevLogIndex].Term == args.PrevLogTerm {
 		//匹配成功，直接将所有之后的日志删除，并且将发来的日志append到后面去
