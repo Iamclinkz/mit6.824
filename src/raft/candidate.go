@@ -115,12 +115,8 @@ func (rf CandidateStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *
 	//如果自己的term较小，那么放弃竞选
 	if myTerm < args.Term {
 		rf.setTerm(args.Term)
-
 		rf.setState(Follower)
-		reply.VoteGranted = true
-		reply.Term = args.Term
-		rf.setVotedFor(args.CandidateId)
-		return nil
+		return rf.FollowerStateHandlerInst.HandleRequestVote(args,reply)
 	}
 
 	//自己的term和请求投票者相同 or 自己的较大，均不投票给对方
