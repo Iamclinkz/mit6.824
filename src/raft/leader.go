@@ -31,7 +31,7 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 		}
 
 		if newNextIndex != rf.nextIndex[peerID]{
-			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID] + 1,newNextIndex)
+			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID],newNextIndex - 1)
 			rf.nextIndex[peerID] = newNextIndex
 		}
 
