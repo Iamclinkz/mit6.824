@@ -192,7 +192,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.log(dClient,"receive command, but failed to push")
 		return -1,-1,false
 	}
-	//rf.log(dClient,"receive command, and successfully push to idx:%v",ret.idx)
+	rf.log(dClient,"receive command, and successfully push to idx:%v",ret.idx)
 	return ret.idx,ret.term,true
 }
 

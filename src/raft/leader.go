@@ -14,13 +14,24 @@ func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNot
 
 func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	myTerm := rf.getTerm()
+	peerID := msg.serverID
 
 	if msg.reply.Term < myTerm || msg.args.PrevLogIndex != rf.nextIndex[msg.serverID] - 1{
 		//测试了10000次才发现的bug，如果我从leader->follower->leader，并且收到了之前的rpc，那么可能有问题
+		rf.log(dWarn,"receive S%v AppendEntryReply, PrevLogIndex:%v != next-1:%v",
+			peerID,msg.args.PrevLogIndex,rf.nextIndex[msg.serverID] - 1)
 		return
 	}
 
-	peerID := msg.serverID
+	//不成功，且对方term较大，自己变为follower
+	if msg.reply.Term > myTerm{
+		rf.log(dWarn,"receive S%v AppendEntryReply, term:%v bigger than mine, change to follower",
+			peerID,msg.reply.Term)
+		rf.setTerm(msg.reply.Term)
+		rf.setState(Follower)
+		return
+	}
+
 	if msg.reply.Success {
 		//如果成功，那么设置matchIndex和nextIndex
 
@@ -33,24 +44,17 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 		//}
 
 		if nextIndexFromReply != rf.nextIndex[peerID]{
-			rf.log(dLeader,"S%v success append log %v to %v",msg.serverID,rf.nextIndex[peerID],nextIndexFromReply - 1)
+			rf.log(dLeader,"S%v success append log %v to %v",peerID,rf.nextIndex[peerID],nextIndexFromReply - 1)
 			rf.nextIndex[peerID] = nextIndexFromReply
 		}
 
 		if nextMatchFromReply != rf.matchIndex[peerID]{
-			rf.log(dLeader,"S%v match log %v to %v",msg.serverID,rf.matchIndex[peerID] + 1,nextMatchFromReply)
+			rf.log(dLeader,"S%v match log %v to %v",peerID,rf.matchIndex[peerID] + 1,nextMatchFromReply)
 			rf.matchIndex[peerID] = nextMatchFromReply
 		}
 
 		//rf.log(dLeader,"receive success reply from S%v, match:%v, next:%v",
 		//	peerID,rf.matchIndex[peerID],rf.nextIndex[peerID])
-		return
-	}
-
-	//不成功，且对方term较大，自己变为follower
-	if msg.reply.Term > myTerm{
-		rf.setTerm(msg.reply.Term)
-		rf.setState(Follower)
 		return
 	}
 
