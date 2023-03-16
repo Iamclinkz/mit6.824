@@ -23,6 +23,7 @@ func (rf FollowerStateHandler) OnQuitState() {
 }
 
 func (rf FollowerStateHandler) OnEnterState() {
+	rf.reSetHeartBeat()
 	return
 }
 
@@ -46,14 +47,14 @@ func (rf FollowerStateHandler) HandleAppendEntries(args *AppendEntriesArgs, repl
 	}
 
 	rf.log(dLog2, "receive heartBeat from S%v, lastIdx:%v, lastTerm:%v, entriesLen:%v",
-		args.LeaderId,args.PrevLogIndex,args.PrevLogTerm, len(args.Entries))
+		args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, len(args.Entries))
 
-	rf.setHeartBeat()
+	rf.reSetHeartBeat()
 
 	reply.Success = rf.doAppendEntry(args)
 	reply.Term = args.Term
 
-	if reply.Success && rf.getLastCommitIdx() != args.LeaderCommit{
+	if reply.Success && rf.getLastCommitIdx() != args.LeaderCommit {
 		//如果leader更新了commitIndex，那么应用一下
 		rf.setLastCommitIdx(args.LeaderCommit)
 		rf.applyLog(args.LeaderCommit)
@@ -90,14 +91,14 @@ func (rf FollowerStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *R
 	}
 
 	//lab2B，论文5.4.1中的选举限制
-	if !rf.logEntriesNewerThanMe(args.LastLogTerm,args.LastLogIndex,args.CandidateId){
+	if !rf.logEntriesNewerThanMe(args.LastLogTerm, args.LastLogIndex, args.CandidateId) {
 		//如果对方不如我们新
 		reply.VoteGranted = false
 		reply.Term = args.Term
 		return nil
 	}
 
-	rf.setHeartBeat()
+	rf.reSetHeartBeat()
 	reply.VoteGranted = true
 	reply.Term = args.Term
 	rf.setVotedFor(args.CandidateId)
