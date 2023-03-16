@@ -14,13 +14,8 @@ func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNot
 func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	myTerm := rf.getTerm()
 
-	if msg.reply.Term < myTerm{
+	if msg.reply.Term < myTerm || msg.args.PrevLogIndex != rf.nextIndex[msg.serverID] - 1{
 		//测试了10000次才发现的bug，如果我从leader->follower->leader，并且收到了之前的rpc，那么可能有问题
-		return
-	}
-
-	//查看是否是过期的rpc
-	if msg.args.PrevLogIndex != rf.nextIndex[msg.serverID] - 1 || msg.args.Term != rf.getTerm(){
 		return
 	}
 
