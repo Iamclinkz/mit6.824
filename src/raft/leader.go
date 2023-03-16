@@ -8,8 +8,7 @@ type LeaderStateHandler struct {
 
 func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	pos := rf.leaderAddCommand(commandWithNotify.command)
-	rf.logTermList.leaderAddLogEntry(rf.getTerm(),pos,commandWithNotify)
-	//commandWithNotify.finishWithOK(rf.getTerm(),pos)
+	commandWithNotify.finishWithOK(rf.getTerm(),pos)
 }
 
 func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
@@ -98,9 +97,6 @@ func (rf LeaderStateHandler) OnQuitState() {
 }
 
 func (rf LeaderStateHandler) OnEnterState() {
-	//为当前的term创建一个termList
-	rf.logTermList.addTerm(rf.getTerm())
-
 	//重置nextIndex数组和matchIndex数组
 	l := len(rf.logs)
 	for i := 0; i < len(rf.peers); i++ {

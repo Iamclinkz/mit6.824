@@ -75,7 +75,6 @@ type Raft struct {
 	//index为peer的index，value为该peer已经复制并且得到了对方的确认的log entry的下标（开始为0），可以用这个数组来计算commitIndex
 	matchIndex []int
 	minLogNextIndex int	//当前几个follower中，最小的nextIndex的值
-	logTermList *LogTermList
 
 	//go routine相关
 	wg *sync.WaitGroup
@@ -249,7 +248,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 	rf.initHandler()
 	rf.setState(Follower)
-	rf.logTermList = newLogTermList(rf)
 
 	rf.nextIndex = make([]int,len(rf.peers))
 	rf.matchIndex = make([]int,len(rf.peers))
@@ -387,14 +385,12 @@ func (rf *Raft) applyLog(to int) {
 
 	//应用到上层的状态机
 	for i := rf.lastApplied + 1; i <= to; i++ {
-		//提交给Start里等候的go程
-		rf.logTermList.commitLogToClient(rf.logs[i].Term,i)
 		rf.applyCh <- ApplyMsg{
 			CommandValid:  true,
 			Command:       rf.logs[i].Command,
 			CommandIndex:  i,
 		}
-		rf.log(dClient,"commit and apply log entry, index: %v", i)
+		rf.log(dClient,"apply log entry, index: %v", i)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
