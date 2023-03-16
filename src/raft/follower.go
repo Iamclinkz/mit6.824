@@ -68,6 +68,7 @@ func (rf FollowerStateHandler) LeaderHeartBeat() {
 func (rf FollowerStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *RequestVoteReply) error {
 	myTerm := rf.getTerm()
 
+	rf.setHeartBeat()
 	//如果竞选者的term还不如我的term，那么拒绝
 	if myTerm > args.Term {
 		reply.VoteGranted = false
