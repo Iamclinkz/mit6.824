@@ -54,8 +54,10 @@ func (rf FollowerStateHandler) HandleAppendEntries(args *AppendEntriesArgs, repl
 	reply.Success = rf.doAppendEntry(args)
 	reply.Term = args.Term
 
-	if reply.Success && rf.getLastCommitIdx() != args.LeaderCommit {
+	if reply.Success && rf.getLastCommitIdx() < args.LeaderCommit {
 		//如果leader更新了commitIndex，那么应用一下
+		//这里发现了一个bug，就是可能leader的commit index还不如我们（因为选举的时候看的是最后一条日志，而不是commitIndex）
+		//那么不用管这种情况
 		rf.setLastCommitIdx(args.LeaderCommit)
 		rf.applyLog(args.LeaderCommit)
 	}
