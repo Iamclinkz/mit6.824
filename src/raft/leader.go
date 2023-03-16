@@ -59,30 +59,30 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 
 	//不成功，但是我们的term起码和对方一样大，如果选举过程没啥问题，说明本次发的没有对方希望的日志（没有匹配成功）
 	//回退一下nextIndex
-	//rf.nextIndex[peerID]--
+	rf.nextIndex[peerID]--
 	//rf.logs[start].Term是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
-	start := rf.nextIndex[peerID] - 1
-	term := rf.logs[start].Term
-	for rf.logs[start].Term == term{
-		start--
-	}
-	term = rf.logs[start].Term
-	if start != 0{
-		for rf.logs[start].Term == term{
-			start--
-		}
-	}
-	rf.nextIndex[peerID] = start + 1
-
+	//start := rf.nextIndex[peerID] - 1
+	//term := rf.logs[start].Term
+	//for rf.logs[start].Term == term{
+	//	start--
+	//}
+	//term = rf.logs[start].Term
+	//if start != 0{
+	//	for rf.logs[start].Term == term{
+	//		start--
+	//	}
+	//}
+	//rf.nextIndex[peerID] = start + 1
+	//
 	if rf.nextIndex[peerID] == 0{
 		//如果回退到0的位置，说明0也匹配不上。和预期不符，错误
 		rf.log(dError,"there is no match log between me and S%v, AppendEntriesArg:%+v,Reply:%+v",
 			peerID,msg.args,msg.reply)
 		panic("")
 	}
-	if rf.minLogNextIndex < rf.nextIndex[peerID]{
-		rf.minLogNextIndex = rf.nextIndex[peerID]
-	}
+	//if rf.minLogNextIndex < rf.nextIndex[peerID]{
+	//	rf.minLogNextIndex = rf.nextIndex[peerID]
+	//}
 
 	rf.log(dLeader,"receive fail reply from S%v, match:%v, next:%v",
 		peerID,rf.matchIndex[peerID],rf.nextIndex[peerID])
