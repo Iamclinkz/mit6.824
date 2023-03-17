@@ -77,21 +77,21 @@ func (rf *Raft) getTerm() int {
 //setTerm 设置当前的term，必须保证前后不同
 func (rf *Raft) setTerm(term int) {
 	oldTerm := rf.getTerm()
-	atomic.StoreInt32(&rf.currentTerm, int32(term))
 
-	if oldTerm > term {
-		rf.log(dError, "old term should not greater than new term!")
-		panic("")
-	}
-
-	if oldTerm != term {
+	if oldTerm != term{
+		if oldTerm > term {
+			rf.log(dError, "old term should not greater than new term!")
+			panic("")
+		}
+		rf.log(dTerm,"term: %v -> %v",oldTerm,term)
+		atomic.StoreInt32(&rf.currentTerm, int32(term))
+		//2C：这里改变VotedFor的时候，同时也持久化了，所以在外面不再进行持久化
 		rf.resetVotedFor()
 	}
 }
 
 func (rf *Raft) incTerm() {
-	atomic.AddInt32(&rf.currentTerm, 1)
-	rf.resetVotedFor()
+	rf.setTerm(rf.getTerm() + 1)
 }
 
 func (rf *Raft) isLeader() bool {
@@ -161,11 +161,14 @@ func (rf *Raft) getLeader() int {
 }
 
 func (rf *Raft) setVotedFor(votedFor int) {
-	rf.votedFor = votedFor
+	if rf.votedFor != votedFor{
+		rf.votedFor = votedFor
+		rf.persist()
+	}
 }
 
 func (rf *Raft) resetVotedFor() {
-	rf.votedFor = -1
+	rf.setVotedFor(-1)
 }
 
 func (rf *Raft) getVotedFor() int {
@@ -173,5 +176,5 @@ func (rf *Raft) getVotedFor() int {
 }
 
 func (rf *Raft) noVoted() bool {
-	return rf.votedFor == -1
+	return rf.getVotedFor() == -1
 }
