@@ -7,7 +7,12 @@ func (rf *Raft) startFollowerHeartBeatCheckTicker() {
 	for rf.killed() == false {
 		time.Sleep(getRandFollowerHeartBeatCheckDuration())
 		if rf.isFollower() && rf.heartBeatExpire() {
-			rf.needElectionCh <- struct{}{}
+			select {
+			case <-rf.closeCh:
+				rf.log(dTimer, "FollowerHeartBeatCheckTicker stop working")
+				return
+			case rf.needElectionCh <- struct{}{}:
+			}
 		}
 	}
 }
@@ -17,7 +22,12 @@ func (rf *Raft) startLeaderHeartBeatTicker() {
 	for rf.killed() == false {
 		time.Sleep(getLeaderHeartBeatDuration())
 		if rf.isLeader() {
-			rf.needHeartBeat <- struct{}{}
+			select {
+			case <-rf.closeCh:
+				rf.log(dTimer, "LeaderHeartBeatTicker stop working")
+				return
+			case rf.needHeartBeat <- struct{}{}:
+			}
 		}
 	}
 }

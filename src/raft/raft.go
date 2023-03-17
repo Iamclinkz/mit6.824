@@ -40,7 +40,10 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 
-	applyCh chan ApplyMsg //提交给上层的log entry
+	applyCh      chan ApplyMsg //提交给上层的log entry
+	applyTransCh chan ApplyMsg
+
+	closeCh chan struct{}
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -239,6 +242,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	close(rf.closeCh)
+	rf.wg.Wait()
 }
 
 func (rf *Raft) killed() bool {
@@ -250,10 +255,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) reSetHeartBeat() {
 	now := time.Now().UnixMicro()
 	atomic.StoreInt64(&rf.lastHeartBeatTime, now)
-	select {
-	case <-rf.needElectionCh:
-	default:
-	}
+	readChAndThrow(rf.needElectionCh)
 }
 
 func (rf *Raft) heartBeatExpire() bool {
@@ -285,6 +287,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.setState(Follower)
 	rf.log(dWarn, "begin restart...")
 
+	rf.closeCh = make(chan struct{})
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
 
@@ -307,6 +310,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.appendEntriesReqCh = make(chan *rpcChMsg)
 	rf.needHeartBeat = make(chan struct{})
 	rf.applyCh = applyCh
+	//因为看着上层创建的applyCh的len是0，也就是说如果我们主go程向其中push，有可能阻塞，
+	//所以单独搞一个线程，往里面push
+	rf.applyTransCh = make(chan ApplyMsg, 1024)
 
 	//rf.stopCandidateCh = make(chan struct{},1)
 
@@ -322,6 +328,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.goF(rf.startFollowerHeartBeatCheckTicker, "FollowerHeartBeatCheckTicker")
 	rf.goF(rf.startLeaderHeartBeatTicker, "LeaderHeartBeatTicker")
 	rf.goF(rf.startMainLoop, "Main Loop")
+	rf.goF(rf.pushToReplyCh, "pushToReplyCh")
 
 	return rf
 }
@@ -378,8 +385,8 @@ func (rf *Raft) startMainLoop() {
 
 		case reply := <-rf.appendEntriesReplyCh:
 			rf.CurrentStateHandler.OnAppendEntriesReply(reply)
-		default:
-			time.Sleep(1 * time.Millisecond)
+		case <-rf.closeCh:
+			return
 		}
 	}
 }
@@ -422,7 +429,7 @@ func (rf *Raft) applyLog(to int) {
 
 	//应用到上层的状态机
 	for i := rf.lastApplied + 1; i <= to; i++ {
-		rf.applyCh <- ApplyMsg{
+		rf.applyTransCh <- ApplyMsg{
 			CommandValid: true,
 			Command:      rf.logs[i].Command,
 			CommandIndex: i,
@@ -533,4 +540,15 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 
 	//不匹配，直接return false
 	return false
+}
+
+func (rf *Raft) pushToReplyCh() {
+	for !rf.killed() {
+		select {
+		case <-rf.closeCh:
+			return
+		case msg := <-rf.applyTransCh:
+			rf.applyCh <- msg
+		}
+	}
 }
