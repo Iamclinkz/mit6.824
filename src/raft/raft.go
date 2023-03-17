@@ -292,15 +292,15 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.matchIndex = make([]int, len(rf.peers))
 
 	rf.needElectionCh = make(chan struct{})
-	rf.requestVoteReqCh = make(chan *rpcChMsg, 128)
-	rf.appendEntriesReplyCh = make(chan *AppendEntriesReplyMsg, 128)
+	rf.requestVoteReqCh = make(chan *rpcChMsg, 2048)
+	rf.appendEntriesReplyCh = make(chan *AppendEntriesReplyMsg, 2048)
 	rf.logs = make([]*LogEntry, 1)
 	rf.logs[0] = &LogEntry{
 		Command: nil,
 		Term:    -1,
 	}
 
-	rf.commandCh = make(chan *CommandWithNotifyCh, 1024)
+	rf.commandCh = make(chan *CommandWithNotifyCh, 2048)
 	// Your initialization code here (2A, 2B, 2C).
 
 	rand.Seed(makeSeed())
@@ -312,7 +312,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyCh = applyCh
 	//因为看着上层创建的applyCh的len是0，也就是说如果我们主go程向其中push，有可能阻塞，
 	//所以单独搞一个线程，往里面push
-	rf.applyTransCh = make(chan ApplyMsg, 1024)
+	rf.applyTransCh = make(chan ApplyMsg, 2048)
 
 	//rf.stopCandidateCh = make(chan struct{},1)
 
@@ -385,6 +385,7 @@ func (rf *Raft) startMainLoop() {
 
 		case reply := <-rf.appendEntriesReplyCh:
 			rf.CurrentStateHandler.OnAppendEntriesReply(reply)
+
 		case <-rf.closeCh:
 			return
 		}
