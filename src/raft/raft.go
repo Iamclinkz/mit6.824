@@ -278,12 +278,12 @@ func (rf *Raft) heartBeatExpire() bool {
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
-	rf.log(dWarn,"begin restart...")
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
 	rf.initHandler()
 	rf.setState(Follower)
+	rf.log(dWarn,"begin restart...")
 
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
