@@ -278,6 +278,7 @@ func (rf *Raft) heartBeatExpire() bool {
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
+	rf.log(dWarn,"begin restart...")
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
