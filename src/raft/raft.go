@@ -427,7 +427,7 @@ func (rf *Raft) applyLog(to int) {
 			Command:      rf.logs[i].Command,
 			CommandIndex: i,
 		}
-		rf.log(dClient, "apply log entry, index: %v,term: %v", rf.logs[i].Term)
+		rf.log(dClient, "apply log entry, index: %v,term: %v",i, rf.logs[i].Term)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
