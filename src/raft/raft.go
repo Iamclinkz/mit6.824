@@ -116,23 +116,23 @@ func (rf *Raft) persist() {
 	e := labgob.NewEncoder(w)
 
 	if err := e.Encode(rf.getTerm()); err != nil {
-		rf.log(dWarn,"failed to persist currentTerm: %v",rf.getTerm())
+		rf.log(dWarn, "failed to persist currentTerm: %v", rf.getTerm())
 		return
 	}
 
 	if err := e.Encode(rf.getVotedFor()); err != nil {
-		rf.log(dWarn,"failed to persist votedFor: %v",rf.getVotedFor())
+		rf.log(dWarn, "failed to persist votedFor: %v", rf.getVotedFor())
 		return
 	}
 
 	if err := e.Encode(rf.logs); err != nil {
-		rf.log(dWarn,"failed to persist current logs, len:%v", len(rf.logs))
+		rf.log(dWarn, "failed to persist current logs, len:%v", len(rf.logs))
 		return
 	}
 
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
-	rf.log(dPersist,"successfully persisted information, votedFor:%v, logLen:%v",rf.getVotedFor(),len(rf.logs))
+	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v", rf.getVotedFor(), len(rf.logs))
 }
 
 //
@@ -150,25 +150,26 @@ func (rf *Raft) readPersist(data []byte) {
 	var votedFor int
 	var logs []*LogEntry
 
-	if d.Decode(&term) != nil{
-		rf.log(dWarn,"failed to load term from persist")
+	if d.Decode(&term) != nil {
+		rf.log(dWarn, "failed to load term from persist")
 		return
 	}
 
-	if d.Decode(&votedFor) != nil{
-		rf.log(dWarn,"failed to load votedFor from persist")
+	if d.Decode(&votedFor) != nil {
+		rf.log(dWarn, "failed to load votedFor from persist")
 		return
 	}
 
-	if d.Decode(&logs) != nil{
-		rf.log(dWarn,"failed to load logs from persist")
+	if d.Decode(&logs) != nil {
+		rf.log(dWarn, "failed to load logs from persist")
 		return
 	}
 
-	rf.setTerm(term)
-	rf.setVotedFor(votedFor)
+	//因为readPersist只在开始时调用，所以不需要加锁。注意在readPersister中不应该有rf.Persist()的操作！否则可能死锁！
+	atomic.StoreInt32(&rf.currentTerm, int32(term))
+	rf.votedFor = votedFor
 	rf.logs = logs
-	rf.log(dPersist,"successful loaded from persist")
+	rf.log(dPersist, "successful loaded from persist")
 }
 
 //
@@ -515,7 +516,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 			persist = true
 		}
 
-		if persist{
+		if persist {
 			//2C：如果加了或者减了日志，那么需要持久化
 			rf.persist()
 		}
