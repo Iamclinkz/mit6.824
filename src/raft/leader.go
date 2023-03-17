@@ -8,24 +8,24 @@ type LeaderStateHandler struct {
 
 func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	pos := rf.leaderAddCommand(commandWithNotify.command)
-	commandWithNotify.finishWithOK(rf.getTerm(),pos)
+	commandWithNotify.finishWithOK(rf.getTerm(), pos)
 }
 
 func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	myTerm := rf.getTerm()
 	peerID := msg.serverID
 
-	if msg.reply.Term < myTerm || msg.args.PrevLogIndex != rf.nextIndex[msg.serverID] - 1{
+	if msg.reply.Term < myTerm || msg.args.PrevLogIndex != rf.nextIndex[msg.serverID]-1 {
 		//测试了10000次才发现的bug，如果我从leader->follower->leader，并且收到了之前的rpc，那么可能有问题
-		rf.log(dWarn,"receive S%v AppendEntryReply, PrevLogIndex:%v != next-1:%v",
-			peerID,msg.args.PrevLogIndex,rf.nextIndex[msg.serverID] - 1)
+		rf.log(dWarn, "receive S%v AppendEntryReply, PrevLogIndex:%v != next-1:%v",
+			peerID, msg.args.PrevLogIndex, rf.nextIndex[msg.serverID]-1)
 		return
 	}
 
 	//不成功，且对方term较大，自己变为follower
-	if msg.reply.Term > myTerm{
-		rf.log(dWarn,"receive S%v AppendEntryReply, term:%v bigger than mine, change to follower",
-			peerID,msg.reply.Term)
+	if msg.reply.Term > myTerm {
+		rf.log(dWarn, "receive S%v AppendEntryReply, term:%v bigger than mine, change to follower",
+			peerID, msg.reply.Term)
 		rf.setTerm(msg.reply.Term)
 		rf.setState(Follower)
 		return
@@ -42,13 +42,13 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 		//	return
 		//}
 
-		if nextIndexFromReply != rf.nextIndex[peerID]{
-			rf.log(dLeader,"S%v success append log %v to %v",peerID,rf.nextIndex[peerID],nextIndexFromReply - 1)
+		if nextIndexFromReply != rf.nextIndex[peerID] {
+			rf.log(dLeader, "S%v success append log %v to %v", peerID, rf.nextIndex[peerID], nextIndexFromReply-1)
 			rf.nextIndex[peerID] = nextIndexFromReply
 		}
 
-		if nextMatchFromReply != rf.matchIndex[peerID]{
-			rf.log(dLeader,"S%v match log %v to %v",peerID,rf.matchIndex[peerID] + 1,nextMatchFromReply)
+		if nextMatchFromReply != rf.matchIndex[peerID] {
+			rf.log(dLeader, "S%v match log %v to %v", peerID, rf.matchIndex[peerID]+1, nextMatchFromReply)
 			rf.matchIndex[peerID] = nextMatchFromReply
 		}
 
@@ -59,33 +59,33 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 
 	//不成功，但是我们的term起码和对方一样大，如果选举过程没啥问题，说明本次发的没有对方希望的日志（没有匹配成功）
 	//回退一下nextIndex
-	rf.nextIndex[peerID]--
+	//rf.nextIndex[peerID]--
 	//rf.logs[start].Term是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
-	//start := rf.nextIndex[peerID] - 1
-	//term := rf.logs[start].Term
-	//for rf.logs[start].Term == term{
-	//	start--
-	//}
-	//term = rf.logs[start].Term
-	//if start != 0{
-	//	for rf.logs[start].Term == term{
-	//		start--
-	//	}
-	//}
-	//rf.nextIndex[peerID] = start + 1
+	start := rf.nextIndex[peerID] - 1
+	term := rf.logs[start].Term
+	for rf.logs[start].Term == term {
+		start--
+	}
+	term = rf.logs[start].Term
+	if start != 0 {
+		for rf.logs[start].Term == term {
+			start--
+		}
+	}
+	rf.nextIndex[peerID] = start + 1
 	//
-	if rf.nextIndex[peerID] == 0{
+	if rf.nextIndex[peerID] == 0 {
 		//如果回退到0的位置，说明0也匹配不上。和预期不符，错误
-		rf.log(dError,"there is no match log between me and S%v, AppendEntriesArg:%+v,Reply:%+v",
-			peerID,msg.args,msg.reply)
+		rf.log(dError, "there is no match log between me and S%v, AppendEntriesArg:%+v,Reply:%+v",
+			peerID, msg.args, msg.reply)
 		panic("")
 	}
 	//if rf.minLogNextIndex < rf.nextIndex[peerID]{
 	//	rf.minLogNextIndex = rf.nextIndex[peerID]
 	//}
 
-	rf.log(dLeader,"receive fail reply from S%v, match:%v, next:%v",
-		peerID,rf.matchIndex[peerID],rf.nextIndex[peerID])
+	rf.log(dLeader, "receive fail reply from S%v, match:%v, next:%v",
+		peerID, rf.matchIndex[peerID], rf.nextIndex[peerID])
 }
 
 func (rf LeaderStateHandler) OnCandidateOverTimeTick() {
@@ -100,7 +100,7 @@ func (rf LeaderStateHandler) OnEnterState() {
 	//重置nextIndex数组和matchIndex数组
 	l := len(rf.logs)
 	for i := 0; i < len(rf.peers); i++ {
-		if i != rf.me{
+		if i != rf.me {
 			rf.nextIndex[i] = l
 			rf.matchIndex[i] = 0
 		}
@@ -135,7 +135,7 @@ func (rf LeaderStateHandler) HandleAppendEntries(args *AppendEntriesArgs, reply 
 		rf.setState(Follower)
 		rf.setTerm(args.Term)
 		reply.Term = args.Term
-		return rf.CurrentStateHandler.HandleAppendEntries(args,reply)
+		return rf.CurrentStateHandler.HandleAppendEntries(args, reply)
 	}
 
 	if args.Term == myTerm {
@@ -150,7 +150,7 @@ func (rf LeaderStateHandler) HandleAppendEntries(args *AppendEntriesArgs, reply 
 }
 
 func (rf LeaderStateHandler) LeaderHeartBeat() {
-	if rf.updateCommitIndex(){
+	if rf.updateCommitIndex() {
 		rf.applyLog(rf.getLastCommitIdx())
 	}
 
@@ -165,7 +165,7 @@ func (rf LeaderStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *Req
 		rf.setState(Follower)
 		rf.setTerm(args.Term)
 		reply.Term = args.Term
-		return rf.FollowerStateHandlerInst.HandleRequestVote(args,reply)
+		return rf.FollowerStateHandlerInst.HandleRequestVote(args, reply)
 	}
 
 	reply.VoteGranted = false
