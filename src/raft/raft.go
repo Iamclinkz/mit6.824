@@ -283,7 +283,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 	rf.initHandler()
 	rf.setState(Follower)
-	rf.log(dWarn,"begin restart...")
+	rf.log(dWarn, "begin restart...")
 
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
@@ -427,7 +427,7 @@ func (rf *Raft) applyLog(to int) {
 			Command:      rf.logs[i].Command,
 			CommandIndex: i,
 		}
-		rf.log(dClient, "apply log entry, index: %v,term: %v",i, rf.logs[i].Term)
+		rf.log(dClient, "apply log entry, index: %v,term: %v", i, rf.logs[i].Term)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
@@ -451,6 +451,13 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 	//如果不只有一个peer，那么选取len(rf.peers)/2 + 1的位置，作为当前的commitIndex
 	oldIdx := rf.getLastCommitIdx()
 	newCommitIdx := tmp[len(rf.peers)/2]
+
+	if rf.logs[newCommitIdx].Term != rf.getTerm() {
+		//卡了一天的bug。。5.4.2 leader只能按照超过半数来提交本term的日志，而不能提交之前term的日志
+		//换句话说，如果当前更新到的commitIndex所对应的log不是我们本term添加上的，那么就不应该更新
+		return false
+	}
+
 	if newCommitIdx > rf.getLastCommitIdx() {
 		rf.setLastCommitIdx(newCommitIdx)
 		rf.log(dCommit, "update current commitIndex: %v -> %v", oldIdx, rf.getLastCommitIdx())
