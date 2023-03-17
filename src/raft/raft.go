@@ -168,6 +168,7 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.setTerm(term)
 	rf.setVotedFor(votedFor)
 	rf.logs = logs
+	rf.log(dPersist,"successful loaded from persist")
 }
 
 //
