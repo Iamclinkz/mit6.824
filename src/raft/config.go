@@ -53,7 +53,7 @@ type config struct {
 	rpcs0     int       // rpcTotal() at start of test
 	cmds0     int       // number of agreements
 	bytes0    int64
-	maxIndex  int
+	maxIndex  int //最大的提交日志的index
 	maxIndex0 int
 }
 
@@ -133,6 +133,8 @@ func (cfg *config) crash1(i int) {
 	}
 }
 
+//checkLogs 检查从某个raft peer的ApplyCh中拿到的command和其他raft peer是否一致。
+//具体操作是通过m.CommandIndex拿到该command的位置，查看其他raft peer apply过的指令，在该位置上是否一致
 func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	err_msg := ""
 	v := m.Command
@@ -152,8 +154,8 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	return err_msg, prevok
 }
 
-// applier reads message from apply ch and checks that they match the log
-// contents
+// applier reads message from apply ch and checks that they match the log contents
+// 从applyCh中读取raft提交的command，并且检查
 func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 	for m := range applyCh {
 		if m.CommandValid == false {
@@ -430,6 +432,8 @@ func (cfg *config) checkNoLeader() {
 }
 
 // how many servers think a log entry is committed?
+//index是日志的位置，返回值为多少个raft peer认为该位置的值已经被提交，以及
+//如果有提交，那么该位置的日志是什么（如果提交则应该为一致的，否则直接panic）
 func (cfg *config) nCommitted(index int) (int, interface{}) {
 	count := 0
 	var cmd interface{} = nil
@@ -502,6 +506,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 	starts := 0
 	for time.Since(t0).Seconds() < 10 {
 		// try all the servers, maybe one is the leader.
+		//遍历所有的raft peers，使用Start，将cmd参数表示的命令投送到raft中
 		index := -1
 		for si := 0; si < cfg.n; si++ {
 			starts = (starts + 1) % cfg.n
@@ -523,6 +528,8 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
+			//如果投递成功了，等待2s，看是否有超过半数的peer应用，如果没有，则再回到一开始，
+			//再重新将cmd投送到raft中
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)

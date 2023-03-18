@@ -44,10 +44,12 @@ func readChAndThrow(ch chan struct{}) {
 	}
 }
 
-func readChAndThrowUntilEmpty(ch chan ApplyMsg) {
+//readChAndThrowUntilEmpty 读空所有的commandCh的内容，并且向上层返回error
+func (rf *Raft) readChAndThrowUntilEmpty() {
 	for {
 		select {
-		case <-ch:
+		case cmd := <-rf.commandCh:
+			cmd.finishWithError()
 		default:
 			return
 		}

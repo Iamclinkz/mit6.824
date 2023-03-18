@@ -870,21 +870,27 @@ func internalChurn(t *testing.T, unreliable bool) {
 	stop := int32(0)
 
 	// create concurrent clients
+	//在stop截止之前，不停的使用raft peers的Start添加日志，并且监控是否commit成功，如果成功则
+	//将该cmd 存放到value中，并且push到作为参数的ch中
 	cfn := func(me int, ch chan []int) {
 		var ret []int
 		ret = nil
+		//可以学一下这样写
 		defer func() { ch <- ret }()
 		values := []int{}
 		for atomic.LoadInt32(&stop) == 0 {
 			x := rand.Int()
 			index := -1
 			ok := false
+			//使用rand.Int()随机生成一个日志，依次轮询所有的raft实例，调用其Start，将其
+			//加入到raft中
 			for i := 0; i < servers; i++ {
 				// try them all, maybe one of them is a leader
 				cfg.mu.Lock()
 				rf := cfg.rafts[i]
 				cfg.mu.Unlock()
 				if rf != nil {
+					//这里很奇怪，会依次的向所有的raft实例使用Start，传入日志
 					index1, _, ok1 := rf.Start(x)
 					if ok1 {
 						ok = ok1
@@ -905,11 +911,13 @@ func internalChurn(t *testing.T, unreliable bool) {
 						} else {
 							cfg.t.Fatalf("wrong command type")
 						}
+						//如果有一个server提交，那么就直接append + 返回
 						break
 					}
 					time.Sleep(time.Duration(to) * time.Millisecond)
 				}
 			} else {
+				//如果轮询了一圈，没有任何的raft实例保存了本日志，那么重新来一圈
 				time.Sleep(time.Duration(79+me*17) * time.Millisecond)
 			}
 		}
@@ -917,19 +925,23 @@ func internalChurn(t *testing.T, unreliable bool) {
 	}
 
 	ncli := 3
+	//cha是一个存放chan的数组，chan又是int切片类型的chan
 	cha := []chan []int{}
 	for i := 0; i < ncli; i++ {
 		cha = append(cha, make(chan []int))
 		go cfn(i, cha[i])
 	}
 
+	//重复20轮，让raft 失去连接，重启，core
 	for iters := 0; iters < 20; iters++ {
 		if (rand.Int() % 1000) < 200 {
+			//随机选取一个server 失去连接
 			i := rand.Int() % servers
 			cfg.disconnect(i)
 		}
 
 		if (rand.Int() % 1000) < 500 {
+			//随机选取一个server 重启
 			i := rand.Int() % servers
 			if cfg.rafts[i] == nil {
 				cfg.start1(i, cfg.applier)
@@ -938,6 +950,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 		}
 
 		if (rand.Int() % 1000) < 200 {
+			//随机选取一个server go die
 			i := rand.Int() % servers
 			if cfg.rafts[i] != nil {
 				cfg.crash1(i)
@@ -951,6 +964,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 		time.Sleep((RaftElectionTimeout * 7) / 10)
 	}
 
+	//最后，把大家变成联通的
 	time.Sleep(RaftElectionTimeout)
 	cfg.setunreliable(false)
 	for i := 0; i < servers; i++ {
@@ -960,8 +974,10 @@ func internalChurn(t *testing.T, unreliable bool) {
 		cfg.connect(i)
 	}
 
+	//stop一手上面的cfn
 	atomic.StoreInt32(&stop, 1)
 
+	//把每个cfn统计的结果，拼接到一个大的value中
 	values := []int{}
 	for i := 0; i < ncli; i++ {
 		vv := <-cha[i]
@@ -973,6 +989,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 
 	time.Sleep(RaftElectionTimeout)
 
+	//随机生成一个command，并且给raft 10s，让raft commit这个commit，如果过了10s则报错退出
 	lastIndex := cfg.one(rand.Int(), servers, true)
 
 	really := make([]int, lastIndex+1)

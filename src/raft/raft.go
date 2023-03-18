@@ -244,6 +244,7 @@ func (rf *Raft) Kill() {
 	// Your code here, if desired.
 	close(rf.closeCh)
 	rf.wg.Wait()
+	rf.readChAndThrowUntilEmpty()
 }
 
 func (rf *Raft) killed() bool {
@@ -548,6 +549,9 @@ func (rf *Raft) pushToReplyCh() {
 		select {
 		case <-rf.closeCh:
 			return
+		//golang中的select没法保证执行的优先级，也就是说有可能applyTransCh中还有东西，但是
+		//本go程直接return了。实际上这也符合正常情况，例如一个raft peer已经提交了一个command，
+		//但是还没来得及apply到状态机中，就狗带了。这种情况raft回复后会再次reply。所以不需要处理
 		case msg := <-rf.applyTransCh:
 			rf.applyCh <- msg
 		}
