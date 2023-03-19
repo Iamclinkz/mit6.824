@@ -87,7 +87,7 @@ type RequestVoteReply struct {
 	Term        int  //回复者的任期号
 	VoteGranted bool //是否支持候选人
 	ServerID    int  //只用在内部主线程回调，不用在rpc发送中，懒得再封装一个结构了
-	Error       error
+	Error       string
 }
 
 //
@@ -122,7 +122,7 @@ type RequestVoteReply struct {
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.log(dTrace, "send RequestVote to S%v", server)
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	if !ok || reply.Error != nil {
+	if !ok || reply.Error != "" {
 		return
 	}
 
@@ -139,7 +139,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.killed() {
-		reply.Error = killedError
+		reply.Error = killedError.Error()
 		rf.log(dWarn, "I was killed, but got RequestVote from S%v", args.CandidateId)
 		return
 	}
@@ -150,7 +150,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	err := <-ch
 	if err != nil {
 		rf.log(dWarn, "finish RequestVote rpc from server, error:%v", err)
-		reply.Error = killedError
+		reply.Error = killedError.Error()
 		return
 	}
 	rf.log(dTrace, "finish RequestVote rpc from server:%v, reply: %+v", args.CandidateId, *reply)
@@ -168,9 +168,9 @@ type AppendEntriesArgs struct {
 
 type AppendEntriesReply struct {
 	// Your data here (2A, 2B).
-	Term    int   //自己的term
-	Success bool  //是否成功
-	Error   error //是否失败
+	Term    int    //自己的term
+	Success bool   //是否成功
+	Error   string //是否失败
 }
 
 type AppendEntriesReplyMsg struct {
@@ -246,7 +246,7 @@ func (rf *Raft) genAppendEntriesArgs(serverID int) *AppendEntriesArgs {
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-	if !ok || reply.Error != nil {
+	if !ok || reply.Error != "" {
 		return
 	}
 
@@ -262,7 +262,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	if rf.killed() {
-		reply.Error = killedError
+		reply.Error = killedError.Error()
 		rf.log(dWarn, "I was killed, but got AppendEntries from S%v", args.LeaderId)
 		return
 	}
@@ -271,7 +271,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	err := <-ch
 	if err != nil {
 		rf.log(dWarn, "finish append entry with error:%v", err)
-		reply.Error = err
+		reply.Error = err.Error()
 	}
 }
 
