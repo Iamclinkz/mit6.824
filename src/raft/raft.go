@@ -72,6 +72,11 @@ type Raft struct {
 	commitTerm  int //已经提交的最后一条log entry的term。注意commit != apply
 
 	lastApplied int //已经被state machine应用的最后一条log entry的index
+	//follower使用，本term是否已经match到leader了。在测试100000次时发现的错误，leader如果在add一条command之前，发了一个没有任何条目
+	//的rpc（称为A）给某个follower，随后leader添加了一个条目后，又发给了该follower一个rpc（称为B），则如果AB乱序，可能新的那个条目可能
+	//一开始被保存到该follower上，并且该follower返回ok，但是接下来又将该条目删除。从而leader以为该follower保存成功，实际上没有。容易出现
+	//commit的错误。所以加了这个字段，如果本term已经跟leader match了，那么就不会再删除字段了
+	thisTermMatchedLeader bool
 
 	//leader使用，一定要注意！！下面的三个字段都表示的是rf.logs的下标，而非log的编号！
 	//第n条log被放置在rf.logs[n+1]的位置上！！！
@@ -509,10 +514,10 @@ func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIn
 
 //doAppendEntry 只能在主线程调用，处理来自当前承认的leader的appendEntry指令，返回是否成功
 func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
-	//if args.Entries == nil || len(args.Entries) == 0{
-	//	//如果是心跳包，那么直接return
-	//	return true
-	//}
+	if rf.thisTermMatchedLeader && args.PrevLogIndex < rf.getLastLogEntryIndex() {
+		//如果我们当前已经跟leader匹配了，但是leader仍然发之前的包，那么直接return
+		return true
+	}
 
 	oldLen := len(rf.logs)
 	if args.PrevLogIndex < oldLen && rf.logs[args.PrevLogIndex].Term == args.PrevLogTerm {
@@ -537,6 +542,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 			//2C：如果加了或者减了日志，那么需要持久化
 			rf.persist()
 		}
+		rf.thisTermMatchedLeader = true
 		return true
 	}
 

@@ -43,6 +43,10 @@ func (rf FollowerStateHandler) HandleAppendEntries(args *AppendEntriesArgs, repl
 	}
 
 	if args.Term > myTerm {
+		//这里实际上不需要管leader是不是已经换过一轮了。因为raft论文中有提到，如果两个raft peer在相同的index处，有termID相同的
+		//两条日志，那么这两个日志的command也一定相同。并且我们只是根据：
+		// rf.logs[args.PrevLogIndex].Term == args.PrevLogTerm
+		//这一条匹配规则匹配，也就是说无论是新leader还是旧leader，根本不需要进行区分
 		rf.setTerm(args.Term)
 	}
 

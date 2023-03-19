@@ -78,15 +78,16 @@ func (rf *Raft) getTerm() int {
 func (rf *Raft) setTerm(term int) {
 	oldTerm := rf.getTerm()
 
-	if oldTerm != term{
+	if oldTerm != term {
 		if oldTerm > term {
 			rf.log(dError, "old term should not greater than new term!")
 			panic("")
 		}
-		rf.log(dTerm,"term: %v -> %v",oldTerm,term)
+		rf.log(dTerm, "term: %v -> %v", oldTerm, term)
 		atomic.StoreInt32(&rf.currentTerm, int32(term))
 		//2C：这里改变VotedFor的时候，同时也持久化了，所以在外面不再进行持久化
 		rf.resetVotedFor()
+		rf.thisTermMatchedLeader = false
 	}
 }
 
@@ -125,8 +126,8 @@ func (rf *Raft) setLastCommitIdx(idx int) {
 	//defer rf.logMu.Unlock()
 
 	//简单做个check
-	if idx < rf.commitIndex{
-		rf.log(dError,"last commit index should not decrease: %v->%v",rf.commitIndex,idx)
+	if idx < rf.commitIndex {
+		rf.log(dError, "last commit index should not decrease: %v->%v", rf.commitIndex, idx)
 	}
 	rf.commitIndex = idx
 }
@@ -139,7 +140,7 @@ func (rf *Raft) getLastCommitTerm() int {
 }
 
 func (rf *Raft) getLastLogEntryTerm() int {
-	return rf.logs[len(rf.logs) - 1].Term
+	return rf.logs[len(rf.logs)-1].Term
 }
 
 func (rf *Raft) getLastLogEntryIndex() int {
@@ -161,7 +162,7 @@ func (rf *Raft) getLeader() int {
 }
 
 func (rf *Raft) setVotedFor(votedFor int) {
-	if rf.votedFor != votedFor{
+	if rf.votedFor != votedFor {
 		rf.votedFor = votedFor
 		rf.persist()
 	}

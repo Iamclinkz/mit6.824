@@ -34,13 +34,14 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	if msg.reply.Success {
 		//如果成功，那么设置matchIndex和nextIndex
 
-		//这里rpc可能乱序，所以需要保证一手小的不能覆盖大的
 		nextIndexFromReply := msg.args.PrevLogIndex + len(msg.args.Entries) + 1
 		nextMatchFromReply := nextIndexFromReply - 1
 
-		//if nextIndexFromReply < rf.nextIndex[peerID] || nextMatchFromReply < rf.matchIndex[peerID]{
-		//	return
-		//}
+		//这里rpc可能乱序，所以需要保证一手小的不能覆盖大的
+		//如果msg中的条目都匹配成功了，但是以前就匹配过了，那么可能是rpc乱序了，也可能是本次没有增加新的条目，总之我们不做处理
+		if nextIndexFromReply <= rf.nextIndex[peerID] || nextMatchFromReply <= rf.matchIndex[peerID] {
+			return
+		}
 
 		if nextIndexFromReply != rf.nextIndex[peerID] {
 			rf.log(dLeader, "S%v success append log %v to %v", peerID, rf.nextIndex[peerID], nextIndexFromReply-1)
