@@ -26,21 +26,21 @@ type ApplyMsg struct {
 }
 
 type CommandWithNotifyCh struct {
-	command interface{}
-	notifyCh chan *CommandNotify	//如果成功放到leader的logs中，那么返回index，否则返回-1
+	command  interface{}
+	notifyCh chan *CommandNotify //如果成功放到leader的logs中，那么返回index，否则返回-1
 }
 
 type CommandNotify struct {
-	ok	bool
+	ok   bool
 	term int
-	idx int
+	idx  int
 }
 
 //pushCommand 副go程接受的来自客户端的command，扔给主go程处理
-func (rf *Raft) pushCommand(command interface{})chan *CommandNotify{
+func (rf *Raft) pushCommand(command interface{}) chan *CommandNotify {
 	commandWithNotifyCh := &CommandWithNotifyCh{
 		command:  command,
-		notifyCh: make(chan *CommandNotify,1),
+		notifyCh: make(chan *CommandNotify, 1),
 	}
 	rf.commandCh <- commandWithNotifyCh
 
@@ -48,19 +48,19 @@ func (rf *Raft) pushCommand(command interface{})chan *CommandNotify{
 }
 
 //finishWithError 主go程出错（例如当前状态不对），给客户端返回错误
-func (c *CommandWithNotifyCh)finishWithError(){
+func (c *CommandWithNotifyCh) finishWithError() {
 	c.notifyCh <- &CommandNotify{
 		term: -1,
-		idx:   -1,
-		ok:    false,
+		idx:  -1,
+		ok:   false,
 	}
 }
 
-func (c *CommandWithNotifyCh)finishWithOK(term,idx int){
+func (c *CommandWithNotifyCh) finishWithOK(term, idx int) {
 	c.notifyCh <- &CommandNotify{
 		term: term,
-		idx:   idx,
-		ok:    true,
+		idx:  idx,
+		ok:   true,
 	}
 }
 
@@ -87,6 +87,7 @@ type RequestVoteReply struct {
 	Term        int  //回复者的任期号
 	VoteGranted bool //是否支持候选人
 	ServerID    int  //只用在内部主线程回调，不用在rpc发送中，懒得再封装一个结构了
+	Error       error
 }
 
 //
@@ -118,32 +119,39 @@ type RequestVoteReply struct {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 //
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.log(dTrace, "send RequestVote to S%v", server)
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	if !ok {
-		return false
+	if !ok || reply.Error != nil {
+		return
 	}
 
 	reply.ServerID = server
-	if reply.VoteGranted{
+	if reply.VoteGranted {
 		rf.log(dTrace, "S%v voted:√", server)
-	}else{
+	} else {
 		rf.log(dTrace, "S%v voted:×", server)
 	}
 
 	rf.requestVoteReplyCh <- reply
-	return true
+	return
 }
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	if rf.killed() {
+		reply.Error = killedError
+		rf.log(dWarn, "I was killed, but got RequestVote from S%v", args.CandidateId)
+		return
+	}
+
 	// Your code here (2A, 2B).
 	rf.log(dTrace, "got RequestVote rpc from S%v: %+v", args.CandidateId, *args)
 	ch := pushRpcChan(args, reply, rf.requestVoteReqCh)
 	err := <-ch
 	if err != nil {
-		reply.VoteGranted = false
-		reply.Term, _ = rf.GetState()
+		rf.log(dWarn, "finish RequestVote rpc from server, error:%v", err)
+		reply.Error = killedError
+		return
 	}
 	rf.log(dTrace, "finish RequestVote rpc from server:%v, reply: %+v", args.CandidateId, *reply)
 }
@@ -160,13 +168,14 @@ type AppendEntriesArgs struct {
 
 type AppendEntriesReply struct {
 	// Your data here (2A, 2B).
-	Term     int  //自己的term
-	Success  bool //是否成功
+	Term    int   //自己的term
+	Success bool  //是否成功
+	Error   error //是否失败
 }
 
 type AppendEntriesReplyMsg struct {
-	args *AppendEntriesArgs
-	reply *AppendEntriesReply
+	args     *AppendEntriesArgs
+	reply    *AppendEntriesReply
 	serverID int
 }
 
@@ -174,8 +183,8 @@ type AppendEntriesReplyMsg struct {
 func (rf *Raft) sendHeartBeat() {
 	//[ rf.minLogNextIndex , len(rf.logs) ) 的内容需要被拷贝缓存一手，再发送。防止主go程在发送期间对logs增删
 
-	logs := make([]*LogEntry,len(rf.logs))
-	copy(logs,rf.logs)
+	logs := make([]*LogEntry, len(rf.logs))
+	copy(logs, rf.logs)
 
 	//if rf.minLogNextIndex == len(rf.logs){
 	//	//如果当前没有要发送的，发送简单的心跳
@@ -197,16 +206,16 @@ func (rf *Raft) sendHeartBeat() {
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
 			req := &AppendEntriesArgs{
-				Term:     myTerm,
-				LeaderId: rf.me,
+				Term:         myTerm,
+				LeaderId:     rf.me,
 				LeaderCommit: rf.getLastCommitIdx(),
 				//因为有了哨兵，所以这里可以不用判断当前有无日志，即时没有日志，这里也会发送
 				//PrevLogIndex = 0
 				//PrevLogTerm = rf.logs[0].Term (即-1)
 				//Entries = []
 				PrevLogIndex: rf.nextIndex[serverID] - 1,
-				PrevLogTerm: rf.logs[rf.nextIndex[serverID] - 1].Term,
-				Entries: logs[rf.nextIndex[serverID]:],
+				PrevLogTerm:  rf.logs[rf.nextIndex[serverID]-1].Term,
+				Entries:      logs[rf.nextIndex[serverID]:],
 			}
 			go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 		}
@@ -214,13 +223,13 @@ func (rf *Raft) sendHeartBeat() {
 	return
 }
 
-func (rf *Raft) genAppendEntriesArgs(serverID int)*AppendEntriesArgs{
+func (rf *Raft) genAppendEntriesArgs(serverID int) *AppendEntriesArgs {
 	//todo 仔细检查一下
 	var entries []*LogEntry
 	prevLogIndex := rf.nextIndex[serverID] - 1
 	prevLogTerm := -1
 
-	if prevLogIndex != 0{
+	if prevLogIndex != 0 {
 		prevLogTerm = rf.logs[prevLogIndex].Term
 		entries = rf.logs[rf.nextIndex[serverID]:]
 	}
@@ -235,11 +244,10 @@ func (rf *Raft) genAppendEntriesArgs(serverID int)*AppendEntriesArgs{
 	}
 }
 
-func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-	if !ok {
-		return false
+	if !ok || reply.Error != nil {
+		return
 	}
 
 	msg := &AppendEntriesReplyMsg{
@@ -249,18 +257,24 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	}
 
 	rf.appendEntriesReplyCh <- msg
-	return true
+	return
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	if rf.killed() {
+		reply.Error = killedError
+		rf.log(dWarn, "I was killed, but got AppendEntries from S%v", args.LeaderId)
+		return
+	}
+
 	ch := pushRpcChan(args, reply, rf.appendEntriesReqCh)
 	err := <-ch
 	if err != nil {
-		reply.Success = false
-		reply.Term, _ = rf.GetState()
+		rf.log(dWarn, "finish append entry with error:%v", err)
+		reply.Error = err
 	}
 }
 
-func (rf *Raft) GenAppendEntriesArgs(serverID int)*AppendEntriesArgs {
+func (rf *Raft) GenAppendEntriesArgs(serverID int) *AppendEntriesArgs {
 	return nil
 }

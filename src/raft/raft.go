@@ -249,7 +249,9 @@ func (rf *Raft) Kill() {
 	// Your code here, if desired.
 	close(rf.closeCh)
 	rf.wg.Wait()
+
 	rf.readChAndThrowUntilEmpty()
+	close(rf.applyCh)
 }
 
 func (rf *Raft) killed() bool {

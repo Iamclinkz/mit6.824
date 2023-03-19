@@ -1,5 +1,7 @@
 package raft
 
+import "errors"
+
 func (rf *Raft) goF(f func(), name string) {
 	// Your code here (2A, 2B).
 	rf.wg.Add(1)
@@ -50,8 +52,17 @@ func (rf *Raft) readChAndThrowUntilEmpty() {
 		select {
 		case cmd := <-rf.commandCh:
 			cmd.finishWithError()
+		case cmd := <-rf.appendEntriesReqCh:
+			cmd.finish(killedError)
+		case cmd := <-rf.requestVoteReqCh:
+			cmd.finish(killedError)
+		case <-rf.appendEntriesReplyCh:
+		case <-rf.requestVoteReplyCh:
+
 		default:
 			return
 		}
 	}
 }
+
+var killedError error = errors.New("killed error")
