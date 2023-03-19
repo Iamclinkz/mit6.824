@@ -63,7 +63,7 @@ type Raft struct {
 	//logMu sync.Mutex  //下面几个字段日志相关的字段的锁
 
 	//logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！logs[0].Term = -1
-	logs      []*LogEntry               //初始为1
+	logs      []*LogEntry               //因为有了snapshot，所以实际的日志长度是 len(rf.logs) + lastIncludeIndex
 	commandCh chan *CommandWithNotifyCh //只有leader使用，来自客户端的LogEntry
 	//下面两个字段的关系可以见 https://www.zhihu.com/question/61726492/answer/190736554
 	//commitIndex 是本raft感知到(commit)的最后一条log entry的index
@@ -112,6 +112,11 @@ type Raft struct {
 	voter                 map[int]struct{}
 	candidateOverTimeTick <-chan time.Time
 	leastVoterNum         int
+
+	//2D snapshot
+	lastIncludeIndex int    //原本的rf.logs的 [0,lastIncludeIndex] 都被当前的snapshot给替代了
+	lastIncludeTerm  int    //最后一条被snapshot(下标为lastIncludeIndex的日志)替代的日志的term
+	snapshot         []byte //[0,lastIncludeIndex] 的日志的快照
 }
 
 //
@@ -183,6 +188,10 @@ func (rf *Raft) readPersist(data []byte) {
 //
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
 // have more recent info since it communicate the snapshot on applyCh.
+// service层用于通知raft层，希望raft层可以使用snapshot参数表示的快照，替换掉
+// 从lastIncludedIndex开始的日志，如果raft觉得可以的话，返回true，否则返回false。
+// raft可能会感觉不可以，因为调用CondInstallSnapshot时，raft又在lastIncludedIndex之后加了新的日志。
+// 这样如果直接应用该日志，会丢弃掉lastIncludedIndex的日志，所以不可以接受
 //
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
@@ -195,6 +204,10 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
 // that index. Raft should now trim its log as much as possible.
+//这部分的理解可以看 http://nil.csail.mit.edu/6.824/2021/notes/raft_diagram.pdf 的图
+//raft层上层的service层（也可以理解成一个状态机），会定期的将raft层（通过applyCh）上传的日志进行压缩（例如满100条压缩一次），
+//压缩成快照的形式。（例如raft论文中的图12）
+//压缩完成之后，会通知raft层，然后raft层可以将压缩成功的日志在rf.logs中删除掉，并且用snapshot来代替这些日志。
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 

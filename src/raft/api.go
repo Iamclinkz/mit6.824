@@ -186,22 +186,6 @@ func (rf *Raft) sendHeartBeat() {
 	logs := make([]*LogEntry, len(rf.logs))
 	copy(logs, rf.logs)
 
-	//if rf.minLogNextIndex == len(rf.logs){
-	//	//如果当前没有要发送的，发送简单的心跳
-	//	req := &AppendEntriesArgs{
-	//		Term:     rf.getTerm(),
-	//		LeaderId: rf.me,
-	//		LeaderCommit: rf.commitIndex,
-	//	}
-	//
-	//	for serverID, _ := range rf.peers {
-	//		if serverID != rf.me {
-	//			go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
-	//		}
-	//	}
-	//	return
-	//}
-
 	myTerm := rf.getTerm()
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
