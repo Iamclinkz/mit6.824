@@ -514,8 +514,11 @@ func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIn
 
 //doAppendEntry 只能在主线程调用，处理来自当前承认的leader的appendEntry指令，返回是否成功
 func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
-	if rf.thisTermMatchedLeader && args.PrevLogIndex < rf.getLastLogEntryIndex() {
-		//如果我们当前已经跟leader匹配了，但是leader仍然发之前的包，那么直接return
+	if rf.thisTermMatchedLeader && args.PrevLogIndex+len(args.Entries) <= rf.getLastLogEntryIndex() {
+		//如果我们当前已经跟leader匹配了，但是leader发的包仍然没有新的内容，这可能是因为leader没有append新的logEntry，
+		//也可能是因为rpc乱序，总之直接return
+		//args.PrevLogIndex + len(args.Entries) 的值是leader发来的最后一条日志在rf.logs中的index
+		//如果这个位置不如我们的大，那么直接返回，不做处理
 		return true
 	}
 
