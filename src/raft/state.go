@@ -62,7 +62,7 @@ func (rf *Raft) getState() State {
 	return State(atomic.LoadUint32(stateAddr))
 }
 
-//只有主线程可以set
+// 只有主线程可以set
 func (rf *Raft) setState(newState State) {
 	rf.CurrentStateHandler.OnQuitState()
 	oldState := rf.getState()
@@ -77,7 +77,7 @@ func (rf *Raft) getTerm() int {
 	return int(atomic.LoadInt32(&rf.currentTerm))
 }
 
-//setTerm 设置当前的term，必须保证前后不同
+// setTerm 设置当前的term，必须保证前后不同
 func (rf *Raft) setTerm(term int) {
 	oldTerm := rf.getTerm()
 
@@ -156,7 +156,7 @@ func (rf *Raft) noVoted() bool {
 	return rf.getVotedFor() == -1
 }
 
-//LogEntries 2D中对LogEntry做的封装
+// LogEntries 2D中对LogEntry做的封装
 type LogEntries struct {
 	lastIncludeIndex int
 	//logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！logs[0].Term = lastIncludeTerm
@@ -164,7 +164,7 @@ type LogEntries struct {
 	logs []*LogEntry
 }
 
-//Reinit 使用两个参数，重建LogEntries
+// Reinit 使用两个参数，重建LogEntries
 func (es *LogEntries) Reinit(lastIncludeTerm, lastIncludeIndex int) {
 	es.lastIncludeIndex = lastIncludeIndex
 	es.logs = make([]*LogEntry, 1)
@@ -186,6 +186,10 @@ func (es *LogEntries) GetLastLogEntryIndex() int {
 	return len(es.logs) + es.lastIncludeIndex - 1
 }
 
+func (es *LogEntries) GetFirstLogEntryIndex() int {
+	return es.lastIncludeIndex + 1
+}
+
 func (es *LogEntries) Len() int {
 	return len(es.logs) + es.lastIncludeIndex
 }
@@ -198,7 +202,7 @@ func (es *LogEntries) Get(idx int) *LogEntry {
 	return es.logs[idx-es.lastIncludeIndex]
 }
 
-//GetCopy 获取 [from,to] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
+// GetCopy 获取 [from,to] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
 func (es *LogEntries) GetCopy(from, to int) []*LogEntry {
 	if from > to {
 		log.Panicf("from(%v) should not bigger than to(%v)", from, to)
@@ -213,10 +217,27 @@ func (es *LogEntries) GetCopy(from, to int) []*LogEntry {
 	return ret
 }
 
-//AppendCommand 新加一条日志，返回添加的位置
+// AppendCommand 新加一条日志，返回添加的位置
 func (es *LogEntries) AppendCommand(entry *LogEntry) int {
 	es.logs = append(es.logs, entry)
-	return es.Len() - 1
+	return es.GetLastLogEntryIndex()
+}
+
+// RemoveCommandUntil 删除从最后一条，一直到idx（不包括idx）的日志，返回最后一条日志的位置
+func (es *LogEntries) RemoveCommandUntil(idx int) int {
+	if idx > es.GetLastLogEntryIndex() || idx <= es.lastIncludeIndex {
+		log.Panicf("should not remove command until:%v, because lastIncludeIndex:%v, lastLogEntryIndex:%v",
+			idx, es.lastIncludeIndex, es.GetLastLogEntryIndex())
+	}
+
+	es.logs = es.logs[:idx-es.lastIncludeIndex]
+	return es.GetLastLogEntryIndex()
+}
+
+// AppendCommands 将日志切片加入到logs的后面，返回最后一条日志的位置
+func (es *LogEntries) AppendCommands(entries []*LogEntry) int {
+	es.logs = append(es.logs, entries...)
+	return es.GetLastLogEntryIndex()
 }
 
 func NewLogEntries() *LogEntries {

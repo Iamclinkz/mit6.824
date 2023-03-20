@@ -30,9 +30,7 @@ import (
 	"6.824/labrpc"
 )
 
-//
 // A Go object implementing a single Raft peer.
-//
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
@@ -49,10 +47,8 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-	//todo 暂时设定只有主协程可以写，其他的只可以读，防止多个协程之间写出错（例如由大变小）
 	currentTerm int32 //当前的轮次
 
-	//todo 这个字段暂且不加锁了，当前之后主协程访问，之后看情况加锁
 	votedFor int //本轮投给谁了，注意这个字段需要和leader保持相同
 
 	//保护下面的几个字段
@@ -123,11 +119,9 @@ type Raft struct {
 	snapshotCh chan *SnapshotRequest //存放Snapshot()请求的request的chan
 }
 
-//
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
-//
 func (rf *Raft) persist() {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -143,7 +137,7 @@ func (rf *Raft) persist() {
 	}
 
 	if err := e.Encode(rf.logEntries); err != nil {
-		rf.log(dWarn, "failed to persist current logs, len:%v", len(rf.logs))
+		rf.log(dWarn, "failed to persist current logs, len:%v", rf.logEntries.Len())
 		return
 	}
 
@@ -152,9 +146,7 @@ func (rf *Raft) persist() {
 	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v", rf.getVotedFor(), rf.logEntries.Len())
 }
 
-//
 // restore previously persisted state.
-//
 func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
@@ -191,14 +183,12 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.log(dPersist, "successful loaded from persist")
 }
 
-//
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
 // have more recent info since it communicate the snapshot on applyCh.
 // service层用于通知raft层，希望raft层可以使用snapshot参数表示的快照，替换掉
 // 从lastIncludedIndex开始的日志，如果raft觉得可以的话，返回true，否则返回false。
 // raft可能会感觉不可以，因为调用CondInstallSnapshot时，raft又在lastIncludedIndex之后加了新的日志。
 // 这样如果直接应用该日志，会丢弃掉lastIncludedIndex的日志，所以不可以接受
-//
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
@@ -210,10 +200,10 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
 // that index. Raft should now trim its log as much as possible.
-//这部分的理解可以看 http://nil.csail.mit.edu/6.824/2021/notes/raft_diagram.pdf 的图
-//raft层上层的service层（也可以理解成一个状态机），会定期的将raft层（通过applyCh）上传的日志进行压缩（例如满100条压缩一次），
-//压缩成快照的形式。（例如raft论文中的图12）
-//压缩完成之后，会通知raft层，然后raft层可以将压缩成功的日志在rf.logs中删除掉，并且用snapshot来代替这些日志。
+// 这部分的理解可以看 http://nil.csail.mit.edu/6.824/2021/notes/raft_diagram.pdf 的图
+// raft层上层的service层（也可以理解成一个状态机），会定期的将raft层（通过applyCh）上传的日志进行压缩（例如满100条压缩一次），
+// 压缩成快照的形式。（例如raft论文中的图12）
+// 压缩完成之后，会通知raft层，然后raft层可以将压缩成功的日志在rf.logs中删除掉，并且用snapshot来代替这些日志。
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 	//todo 这里要不要让上层调用阻塞一下？
@@ -221,7 +211,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	<-replyCh
 }
 
-//
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -234,7 +223,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // if it's ever committed. the second return value is the current
 // term. the third return value is true if this server believes it is
 // the leader.
-//
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	//这里先初步判断一下，如果不是leader，则直接返回，如果是leader，那么可能收到消息的时候已经不是了，
 	//但是仍然需要给客户端个返回
@@ -254,7 +242,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return ret.idx, ret.term, true
 }
 
-//
 // the tester doesn't halt goroutines created by Raft after each test,
 // but it does call the Kill() method. your code can use killed() to
 // check whether Kill() has been called. the use of atomic avoids the
@@ -264,7 +251,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 // up CPU time, perhaps causing later tests to fail and generating
 // confusing debug output. any goroutine with a long-running loop
 // should call killed() to check whether it should stop.
-//
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
@@ -280,7 +266,7 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-//reSetHeartBeat 将心跳重置，并且清空当前needElectionCh中的请求
+// reSetHeartBeat 将心跳重置，并且清空当前needElectionCh中的请求
 func (rf *Raft) reSetHeartBeat() {
 	now := time.Now().UnixMicro()
 	atomic.StoreInt64(&rf.lastHeartBeatTime, now)
@@ -295,7 +281,6 @@ func (rf *Raft) heartBeatExpire() bool {
 	return false
 }
 
-//
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
 // server's port is peers[me]. all the servers' peers[] arrays
@@ -305,7 +290,6 @@ func (rf *Raft) heartBeatExpire() bool {
 // tester or service expects Raft to send ApplyMsg messages.
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
-//
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
@@ -436,8 +420,8 @@ func (rf *Raft) startMainLoop() {
 	}
 }
 
-//leaderAddCommand 只可以在主go程中使用。往log切片中加入一条command
-//返回把command加入到的位置
+// leaderAddCommand 只可以在主go程中使用。往log切片中加入一条command
+// 返回把command加入到的位置
 func (rf *Raft) leaderAddCommand(command interface{}) (pos int) {
 	entry := &LogEntry{
 		Command: command,
@@ -457,11 +441,11 @@ func (rf *Raft) leaderAddCommand(command interface{}) (pos int) {
 	return
 }
 
-//applyLog 只可以在主go程中使用。将 [ lastApplied + 1, to ] 的日志apply，即传递、应用到上层的状态机
+// applyLog 只可以在主go程中使用。将 [ lastApplied + 1, to ] 的日志apply，即传递、应用到上层的状态机
 func (rf *Raft) applyLog(to int) {
-	if to >= rf.logEntries.Len() {
+	if to > rf.logEntries.GetLastLogEntryIndex() {
 		//如果希望提交的log的index大于当前logs切片的长度
-		rf.log(dError, "try to apply log:%v, which is greater than len(rf.logs):%v", to, len(rf.logs))
+		rf.log(dError, "try to apply log:%v, which is greater than current last index:%v", to, rf.logEntries.GetLastLogEntryTerm())
 		panic("")
 	}
 
@@ -473,19 +457,24 @@ func (rf *Raft) applyLog(to int) {
 
 	//应用到上层的状态机
 	for i := rf.lastApplied + 1; i <= to; i++ {
+		entry := rf.logEntries.Get(i)
+		if entry == nil {
+			rf.log(dError, "try to apply log idx:%v, which is not contains in current log entries:[%v,%v]",
+				i, rf.logEntries.GetFirstLogEntryIndex(), rf.logEntries.GetLastLogEntryIndex())
+		}
 		rf.applyTransCh <- ApplyMsg{
 			CommandValid: true,
-			Command:      rf.logEntries.Get(i),
+			Command:      entry.Command,
 			CommandIndex: i,
 		}
-		rf.log(dClient, "apply log entry, index: %v,term: %v", i, rf.logEntries.Get(i).Term)
+		rf.log(dClient, "apply log entry, index: %v,term: %v", i, entry.Term)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
 	rf.lastApplied = to
 }
 
-//updateCommitIndex 只能在主线程调用，计算，并且更新当前的commitIndex
+// updateCommitIndex 只能在主线程调用，计算，并且更新当前的commitIndex
 func (rf *Raft) updateCommitIndex() (updated bool) {
 	tmp := make([]int, len(rf.peers))
 
@@ -516,8 +505,8 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 	return false
 }
 
-//logEntriesNewerThanMe 另一个peer的logEntries是否比我的新。来自论文5.4.1
-//如果完全相同，也返回true。因为论文中都是"起码不比我老"这样的陈述
+// logEntriesNewerThanMe 另一个peer的logEntries是否比我的新。来自论文5.4.1
+// 如果完全相同，也返回true。因为论文中都是"起码不比我老"这样的陈述
 func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIndex, serverID int) bool {
 	//注意这里指的是最后一条日志的任期号和索引号，而非commit的索引号和任期号！
 	myLastLogEntryTerm := rf.getLastLogEntryTerm()
@@ -547,8 +536,9 @@ func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIn
 	return true
 }
 
-//doAppendEntry 只能在主线程调用，处理来自当前承认的leader的appendEntry指令，返回是否成功
+// doAppendEntry 只能在主线程调用，处理来自当前承认的leader的appendEntry指令，返回是否成功
 func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
+	//todo 看一手
 	if rf.thisTermMatchedLeader && args.PrevLogIndex+len(args.Entries) <= rf.getLastLogEntryIndex() {
 		//如果我们当前已经跟leader匹配了，但是leader发的包仍然没有新的内容，这可能是因为leader没有append新的logEntry，
 		//也可能是因为rpc乱序，总之直接return
@@ -557,22 +547,35 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 		return true
 	}
 
-	oldLen := len(rf.logs)
-	if args.PrevLogIndex < oldLen && rf.logs[args.PrevLogIndex].Term == args.PrevLogTerm {
-		persist := false
-		//匹配成功，直接将所有之后的日志删除，并且将发来的日志append到后面去
-		//使用哨兵的好处是，即使客户端没有提供任何的日志，这里也能匹配成功
-		rf.logs = rf.logs[0 : args.PrevLogIndex+1]
-		if oldLen != len(rf.logs) {
-			rf.log(dLog2, "delete entry: %v -> %v", len(rf.logs), oldLen-1)
+	persist := false
+	lastLogEntryIdx := rf.logEntries.GetLastLogEntryIndex()
+
+	if args.PrevLogIndex > lastLogEntryIdx {
+		//如果leader发的前一条log的index比我们最后一条log的index都大，那么不接受，直接return false
+		rf.log(dLog2, "doAppendEntry failed because PrevLogIndex(%v) > myLastLogEntryIdx(%v)",
+			args.PrevLogIndex, lastLogEntryIdx)
+		return false
+	}
+
+	if entry := rf.logEntries.Get(args.PrevLogIndex); entry != nil {
+		if entry.Term != args.PrevLogTerm {
+			//如果该entry当前没有被snapshot，且Term不匹配，那么说明自己一定跟leader对不上，直接返回false即可
+			return false
+		}
+
+		//如果是匹配的，那么直接截断匹配的日志的后面的内容，然后替换成leader的entry
+		//截断日志
+		newLastLogEntryIdx := rf.logEntries.RemoveCommandUntil(args.PrevLogTerm)
+		if lastLogEntryIdx != newLastLogEntryIdx {
+			rf.log(dLog2, "delete entry: %v -> %v", newLastLogEntryIdx+1, lastLogEntryIdx)
 			persist = true
 		}
-		oldLen = len(rf.logs)
+		lastLogEntryIdx = newLastLogEntryIdx
 
-		rf.logs = append(rf.logs, args.Entries...)
-
-		if oldLen != len(rf.logs) {
-			rf.log(dLog2, "add entry: %v -> %v", oldLen, len(rf.logs)-1)
+		//把日志加到当前日志的后面
+		newLastLogEntryIdx = rf.logEntries.AppendCommands(args.Entries)
+		if lastLogEntryIdx != newLastLogEntryIdx {
+			rf.log(dLog2, "add entry: %v -> %v", lastLogEntryIdx+1, newLastLogEntryIdx)
 			persist = true
 		}
 
@@ -584,8 +587,10 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 		return true
 	}
 
-	//不匹配，直接return false
-	return false
+	//如果leader发来的PrevLogIndex，已经被我们snapshot了，因为snapshot肯定被提交过了，而leader一定匹配所有的已经提交的日志，
+	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
+	rf.logEntries.logs = args.Entries[rf.logEntries.lastIncludeIndex-args.PrevLogIndex:]
+	return true
 }
 
 func (rf *Raft) pushToReplyCh() {
