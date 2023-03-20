@@ -58,7 +58,12 @@ func (rf *Raft) readChAndThrowUntilEmpty() {
 			cmd.finish(killedError)
 		case <-rf.appendEntriesReplyCh:
 		case <-rf.requestVoteReplyCh:
-
+		case <-rf.installSnapshotReplyCh:
+		case <-rf.installSnapshotReqCh:
+		case cmd := <-rf.snapshotCh:
+			close(cmd.ch)
+		case cmd := <-rf.condInstallSnapshotMsgCh:
+			cmd.finishCh <- false
 		default:
 			return
 		}

@@ -8,6 +8,10 @@ type CandidateStateHandler struct {
 	StateHandlerBase
 }
 
+func (rf CandidateStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotReplyMsg) {
+	return
+}
+
 func (rf CandidateStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
 	//TODO implement me
 	panic("implement me")

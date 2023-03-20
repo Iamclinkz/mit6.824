@@ -6,6 +6,21 @@ type LeaderStateHandler struct {
 	StateHandlerBase
 }
 
+func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotReplyMsg) {
+	if msg.reply.Term != rf.getTerm() {
+		rf.setTerm(msg.reply.Term)
+		rf.setState(Follower)
+	}
+
+	if msg.args.LastIncludeIndex <= rf.nextIndex[msg.serverID] {
+		return
+	}
+
+	rf.nextIndex[msg.serverID] = msg.args.LastIncludeIndex
+	rf.log(dSnap, "revive success InstallSnapshot msg from S%v, update nextIndex:%v",
+		msg.serverID, msg.args.LastIncludeIndex)
+}
+
 func (rf LeaderStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
 	//TODO implement me
 	panic("implement me")
@@ -65,31 +80,44 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 
 	//不成功，但是我们的term起码和对方一样大，如果选举过程没啥问题，说明本次发的没有对方希望的日志（没有匹配成功）
 	//回退一下nextIndex
-	//rf.nextIndex[peerID]--
-	//rf.logs[start].Term是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
-	start := rf.nextIndex[peerID] - 1
-	term := rf.logs[start].Term
-	for rf.logs[start].Term == term {
+
+	//rf.Logs[start].Term是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
+	//最极端的情况，当回退到 rf.nextIndex[peerID] == rf.logEntries.LastIncludeIndex 时，说明我们当前的
+	//rf.logEntries.logs已经无法让follower匹配了，这种情况下，我们设置rf.nextIndex[peerID]为
+	//rf.logEntries.LastIncludeIndex 这样下次心跳的时候，发送安装快照rpc，而不是增加日志rpc。
+	lastIncludeIndex := rf.logEntries.LastIncludeIndex
+	unMatchIdx := rf.nextIndex[peerID]
+
+	if rf.nextIndex[peerID] <= lastIncludeIndex+1 ||
+		rf.logEntries.GetLastIncludeTerm() == rf.logEntries.Get(unMatchIdx).Term {
+		//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
+		//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
+		rf.nextIndex[peerID] = lastIncludeIndex
+		rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
+		return
+	}
+
+	start := unMatchIdx - 1
+	term := rf.logEntries.Get(start).Term
+
+	for rf.logEntries.Get(start).Term == term {
 		start--
 	}
-	term = rf.logs[start].Term
-	if start != 0 {
-		for rf.logs[start].Term == term {
-			start--
-		}
-	}
-	rf.nextIndex[peerID] = start + 1
-	//
-	if rf.nextIndex[peerID] == 0 {
-		//如果回退到0的位置，说明0也匹配不上。和预期不符，错误
-		rf.log(dError, "there is no match log between me and S%v, AppendEntriesArg:%+v,Reply:%+v",
-			peerID, msg.args, msg.reply)
-		panic("")
-	}
-	//if rf.minLogNextIndex < rf.nextIndex[peerID]{
-	//	rf.minLogNextIndex = rf.nextIndex[peerID]
-	//}
 
+	if rf.logEntries.GetLastIncludeTerm() == rf.logEntries.Get(start).Term {
+		//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
+		//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
+		rf.nextIndex[peerID] = lastIncludeIndex
+		rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
+		return
+	}
+
+	term = rf.logEntries.Get(start).Term
+	for rf.logEntries.Get(start).Term == term && start != lastIncludeIndex {
+		start--
+	}
+
+	rf.nextIndex[peerID] = start + 1
 	rf.log(dLeader, "receive fail reply from S%v, match:%v, next:%v",
 		peerID, rf.matchIndex[peerID], rf.nextIndex[peerID])
 }
@@ -104,7 +132,7 @@ func (rf LeaderStateHandler) OnQuitState() {
 
 func (rf LeaderStateHandler) OnEnterState() {
 	//重置nextIndex数组和matchIndex数组
-	l := len(rf.logs)
+	l := rf.logEntries.Len()
 	for i := 0; i < len(rf.peers); i++ {
 		if i != rf.me {
 			rf.nextIndex[i] = l
@@ -113,9 +141,9 @@ func (rf LeaderStateHandler) OnEnterState() {
 	}
 	rf.minLogNextIndex = l
 
-	//自己的nextIndex为len(rf.logs)，表示不需要发送
+	//自己的nextIndex为len(rf.Logs)，表示不需要发送
 	rf.nextIndex[rf.me] = l
-	//自己的matchIndex设置成len(rf.logs) - 1，表示rf.logs中所有的日志都已经和自己的相同
+	//自己的matchIndex设置成len(rf.Logs) - 1，表示rf.logs中所有的日志都已经和自己的相同
 	rf.matchIndex[rf.me] = l - 1
 
 	//当新成为leader时，应该直接跟其他server发送心跳

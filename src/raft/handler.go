@@ -19,6 +19,8 @@ type StateHandler interface {
 	//OnRequestVoteRet 请求投票rpc的返回
 	OnRequestVoteReply(reply *RequestVoteReply)
 
+	OnInstallSnapshotRequestReply(msg *InstallSnapshotReplyMsg)
+
 	//OnQuitState 本state退出的时候，执行的回调，只能进行数据的初始化/通知其他进程，不可以在这里面切换状态！
 	OnQuitState()
 	//OnEnterState 本state进入的时候，执行的回调
@@ -33,6 +35,8 @@ type StateHandler interface {
 
 	//OnSnapshot 处理来自上层service的将快照替换日志的请求
 	HandleSnapshot(req *SnapshotRequest)
+
+	HandleCondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool
 }
 
 //StateHandlerBase 内部持有了三种handler共用的结构
@@ -56,7 +60,7 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 
 	if req.idx >= myLastLogEntryIndex {
 		if entry := rf.logEntries.Get(req.idx); entry == nil {
-			rf.log(dError, "should no Snapshot logs which have not been appended! current lastIdx:%v, req.idx:%v",
+			rf.log(dError, "should no Snapshot Logs which have not been appended! current lastIdx:%v, req.idx:%v",
 				myLastLogEntryIndex, req.idx)
 			panic("")
 		} else {
@@ -65,4 +69,25 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 			rf.log(dSnap, "new snapshot: [%v,%v]", myLastLogEntryIndex, req.idx)
 		}
 	}
+}
+
+func (rf StateHandlerBase) HandleCondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
+	if lastIncludedIndex <= rf.commitIndex {
+		return false
+	}
+
+	if lastIncludedIndex <= rf.getLastLogEntryIndex() {
+		rf.log(dError, "try to install snapshot which current log do not have, new snapshot last index:%v, current len:%v",
+			lastIncludedIndex, rf.getLastLogEntryIndex())
+		panic("")
+	}
+
+	rf.logEntries.Reinit(lastIncludedTerm, lastIncludedIndex)
+	rf.snapshot = snapshot
+	rf.commitIndex = lastIncludedIndex
+	rf.lastApplied = lastIncludedIndex
+	rf.log(dSnap, "CondInstallSnapshot success, current lastIncludedTerm, lastIncludedIndex, commitIdx & apply:%v",
+		lastIncludedIndex)
+	rf.persist()
+	return true
 }

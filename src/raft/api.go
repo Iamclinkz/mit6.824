@@ -181,27 +181,31 @@ type AppendEntriesReplyMsg struct {
 
 //sendHeartBeat 给所有的server发送带有日志目录的心跳，不阻塞
 func (rf *Raft) sendHeartBeat() {
-	//[ rf.minLogNextIndex , len(rf.logs) ) 的内容需要被拷贝缓存一手，再发送。防止主go程在发送期间对logs增删
-
-	logs := make([]*LogEntry, len(rf.logs))
-	copy(logs, rf.logs)
-
 	myTerm := rf.getTerm()
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
-			req := &AppendEntriesArgs{
-				Term:         myTerm,
-				LeaderId:     rf.me,
-				LeaderCommit: rf.getLastCommitIdx(),
-				//因为有了哨兵，所以这里可以不用判断当前有无日志，即时没有日志，这里也会发送
-				//PrevLogIndex = 0
-				//PrevLogTerm = rf.logs[0].Term (即-1)
-				//Entries = []
-				PrevLogIndex: rf.nextIndex[serverID] - 1,
-				PrevLogTerm:  rf.logs[rf.nextIndex[serverID]-1].Term,
-				Entries:      logs[rf.nextIndex[serverID]:],
+			if rf.nextIndex[serverID] > rf.logEntries.LastIncludeIndex {
+				//如果给serverID发送的第一条日志，没有被压缩到快照，直接发送AppendEntries
+				req := &AppendEntriesArgs{
+					Term:         myTerm,
+					LeaderId:     rf.me,
+					LeaderCommit: rf.getLastCommitIdx(),
+					PrevLogIndex: rf.nextIndex[serverID] - 1,
+					PrevLogTerm:  rf.logEntries.Logs[rf.nextIndex[serverID]-1].Term,
+					Entries:      rf.logEntries.GetCopy(rf.nextIndex[serverID]),
+				}
+				go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
+			} else {
+				//如果给serverID发送的第一条日志已经被压缩了，那么发送InstallSnapshot
+				req := &InstallSnapshotRequest{
+					Term:             myTerm,
+					LeaderID:         rf.me,
+					LastIncludeIndex: rf.logEntries.LastIncludeIndex,
+					LastIncludeTerm:  rf.logEntries.GetLastIncludeTerm(),
+					Data:             rf.snapshot,
+				}
+				go rf.sendInstallSnapshot(serverID, req, &InstallSnapshotRequestReply{})
 			}
-			go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 		}
 	}
 	return
@@ -287,12 +291,41 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnap
 	rf.log(dTrace, "finish InstallSnapshot rpc from S%v", args.LeaderID)
 }
 
+type InstallSnapshotReplyMsg struct {
+	args     *InstallSnapshotRequest
+	reply    *InstallSnapshotRequestReply
+	serverID int
+}
+
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 	if !ok || reply.Error != "" {
 		return
 	}
 
-	rf.installSnapshotReplyCh <- reply
+	rf.installSnapshotReplyCh <- &InstallSnapshotReplyMsg{
+		args:     args,
+		reply:    reply,
+		serverID: server,
+	}
 	return
+}
+
+type CondInstallSnapshotMsg struct {
+	lastIncludedTerm  int
+	lastIncludedIndex int
+	snapshot          []byte
+	finishCh          chan bool
+}
+
+func (rf *Raft) sendCondInstallSnapshotMsg(lastIncludedTerm, lastIncludedIndex int, snapshot []byte) chan bool {
+	msg := &CondInstallSnapshotMsg{
+		lastIncludedTerm:  lastIncludedTerm,
+		lastIncludedIndex: lastIncludedIndex,
+		snapshot:          snapshot,
+		finishCh:          make(chan bool, 1),
+	}
+	rf.condInstallSnapshotMsgCh <- msg
+
+	return msg.finishCh
 }

@@ -73,8 +73,8 @@ type Raft struct {
 	thisTermMatchedLeader bool
 
 	//leader使用，一定要注意！！下面的三个字段都表示的是rf.logs的下标，而非log的编号！
-	//第n条log被放置在rf.logs[n+1]的位置上！！！
-	//index为peer的index，value为下一个应该发送的log entry的下标（开始为leader的last log + 1，也就是len(rf.logs)）
+	//第n条log被放置在rf.Logs[n+1]的位置上！！！
+	//index为peer的index，value为下一个应该发送的log entry的下标（开始为leader的last log + 1，也就是len(rf.Logs)）
 	nextIndex []int
 	//index为peer的index，value为该peer已经复制并且得到了对方的确认的log entry的下标（开始为0），可以用这个数组来计算commitIndex
 	matchIndex      []int
@@ -90,10 +90,6 @@ type Raft struct {
 	FollowerStateHandlerInst  FollowerStateHandler
 	//因为只在主go程中访问，所以不需要加锁
 	CurrentStateHandler StateHandler
-
-	//安装快照rpc
-	installSnapshotReqCh   chan *rpcChMsg
-	installSnapshotReplyCh chan *InstallSnapshotRequestReply
 
 	//心跳/附加日志rpc
 	lastHeartBeatTime    int64                       //上次heartBeat的时间
@@ -112,11 +108,15 @@ type Raft struct {
 	leastVoterNum         int
 
 	//2D snapshot
-	//lastIncludeIndex int    //原本的rf.logs的 [0,lastIncludeIndex] 都被当前的snapshot给替代了，实际放到了rf.logEntries.lastIncludeIndex中
+	//LastIncludeIndex int    //原本的rf.logs的 [0,LastIncludeIndex] 都被当前的snapshot给替代了，实际放到了rf.logEntries.lastIncludeIndex中
 	//lastIncludeTerm  int    //最后一条被snapshot(下标为lastIncludeIndex的日志)替代的日志的term，实际放到了rf.logEntries[0].Term中
-	logEntries *LogEntries           //2D：将raft的日志项封装成一个结构了
-	snapshot   []byte                //[0,lastIncludeIndex] 的日志的快照
-	snapshotCh chan *SnapshotRequest //存放Snapshot()请求的request的chan
+	logEntries               *LogEntries           //2D：将raft的日志项封装成一个结构了
+	snapshot                 []byte                //[0,LastIncludeIndex] 的日志的快照
+	snapshotCh               chan *SnapshotRequest //存放Snapshot()请求的request的chan
+	condInstallSnapshotMsgCh chan *CondInstallSnapshotMsg
+	//安装快照rpc
+	installSnapshotReqCh   chan *rpcChMsg
+	installSnapshotReplyCh chan *InstallSnapshotReplyMsg
 }
 
 // save Raft's persistent state to stable storage,
@@ -137,7 +137,7 @@ func (rf *Raft) persist() {
 	}
 
 	if err := e.Encode(rf.logEntries); err != nil {
-		rf.log(dWarn, "failed to persist current logs, len:%v", rf.logEntries.Len())
+		rf.log(dWarn, "failed to persist current Logs, len:%v", rf.logEntries.Len())
 		return
 	}
 
@@ -170,7 +170,7 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 
 	if d.Decode(&logs) != nil {
-		rf.log(dWarn, "failed to load logs from persist")
+		rf.log(dWarn, "failed to load Logs from persist")
 		return
 	}
 
@@ -190,10 +190,15 @@ func (rf *Raft) readPersist(data []byte) {
 // raft可能会感觉不可以，因为调用CondInstallSnapshot时，raft又在lastIncludedIndex之后加了新的日志。
 // 这样如果直接应用该日志，会丢弃掉lastIncludedIndex的日志，所以不可以接受
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
-
 	// Your code here (2D).
-
-	return true
+	ret := <-rf.sendCondInstallSnapshotMsg(lastIncludedTerm, lastIncludedIndex, snapshot)
+	retMsg := "×"
+	if ret {
+		retMsg = "√ "
+	}
+	rf.log(dSnap, "CondInstallSnapshot: lastIncludedTerm:%v, lastIncludedIndex:%v, success:%v",
+		lastIncludedTerm, lastIncludedIndex, retMsg)
+	return ret
 }
 
 // the service says it has created a snapshot that has
@@ -307,6 +312,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.needElectionCh = make(chan struct{})
 	rf.requestVoteReqCh = make(chan *rpcChMsg, 2048)
 	rf.appendEntriesReplyCh = make(chan *AppendEntriesReplyMsg, 2048)
+	rf.snapshotCh = make(chan *SnapshotRequest, 1024)
+	rf.condInstallSnapshotMsgCh = make(chan *CondInstallSnapshotMsg, 1024)
+	rf.installSnapshotReqCh = make(chan *rpcChMsg, 1024)
+	rf.installSnapshotReplyCh = make(chan *InstallSnapshotReplyMsg, 1024)
 
 	rf.commandCh = make(chan *CommandWithNotifyCh, 2048)
 	// Your initialization code here (2A, 2B, 2C).
@@ -413,6 +422,14 @@ func (rf *Raft) startMainLoop() {
 
 		case snapShotReq := <-rf.snapshotCh:
 			rf.CurrentStateHandler.HandleSnapshot(snapShotReq)
+			close(snapShotReq.ch)
+
+		case reply := <-rf.installSnapshotReplyCh:
+			rf.CurrentStateHandler.OnInstallSnapshotRequestReply(reply)
+
+		case req := <-rf.condInstallSnapshotMsgCh:
+			req.finishCh <- rf.CurrentStateHandler.HandleCondInstallSnapshot(req.lastIncludedTerm,
+				req.lastIncludedIndex, req.snapshot)
 
 		case <-rf.closeCh:
 			return
@@ -478,7 +495,7 @@ func (rf *Raft) applyLog(to int) {
 func (rf *Raft) updateCommitIndex() (updated bool) {
 	tmp := make([]int, len(rf.peers))
 
-	//将所有的peer的matchIndex统计（自己的matchIndex为len(rf.logs)-1)，然后找到len(rf.logs)/2 + 1的位置，即commitIndex
+	//将所有的peer的matchIndex统计（自己的matchIndex为len(rf.Logs)-1)，然后找到len(rf.Logs)/2 + 1的位置，即commitIndex
 	for i := 0; i < len(rf.peers); i++ {
 		tmp[i] = rf.matchIndex[i]
 	}
@@ -589,7 +606,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 
 	//如果leader发来的PrevLogIndex，已经被我们snapshot了，因为snapshot肯定被提交过了，而leader一定匹配所有的已经提交的日志，
 	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
-	rf.logEntries.logs = args.Entries[rf.logEntries.lastIncludeIndex-args.PrevLogIndex:]
+	rf.logEntries.Logs = args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]
 	return true
 }
 

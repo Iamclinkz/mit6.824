@@ -158,17 +158,17 @@ func (rf *Raft) noVoted() bool {
 
 // LogEntries 2D中对LogEntry做的封装
 type LogEntries struct {
-	lastIncludeIndex int
-	//logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！logs[0].Term = lastIncludeTerm
+	LastIncludeIndex int
+	//Logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！Logs[0].Term = lastIncludeTerm
 	//如果当前没有快照，那么logs[0].Term = -1
-	logs []*LogEntry
+	Logs []*LogEntry
 }
 
 // Reinit 使用两个参数，重建LogEntries
 func (es *LogEntries) Reinit(lastIncludeTerm, lastIncludeIndex int) {
-	es.lastIncludeIndex = lastIncludeIndex
-	es.logs = make([]*LogEntry, 1)
-	es.logs[0] = &LogEntry{
+	es.LastIncludeIndex = lastIncludeIndex
+	es.Logs = make([]*LogEntry, 1)
+	es.Logs[0] = &LogEntry{
 		Command: nil,
 		Term:    lastIncludeTerm,
 	}
@@ -179,70 +179,74 @@ func (es *LogEntries) snapshotLogEntry(lastIncludeIndex int) {
 }
 
 func (es *LogEntries) GetLastLogEntryTerm() int {
-	return es.logs[len(es.logs)-1].Term
+	return es.Logs[len(es.Logs)-1].Term
+}
+
+func (es *LogEntries) GetLastIncludeTerm() int {
+	return es.Logs[0].Term
 }
 
 func (es *LogEntries) GetLastLogEntryIndex() int {
-	return len(es.logs) + es.lastIncludeIndex - 1
+	return len(es.Logs) + es.LastIncludeIndex - 1
 }
 
 func (es *LogEntries) GetFirstLogEntryIndex() int {
-	return es.lastIncludeIndex + 1
+	return es.LastIncludeIndex + 1
 }
 
 func (es *LogEntries) Len() int {
-	return len(es.logs) + es.lastIncludeIndex
+	return len(es.Logs) + es.LastIncludeIndex
 }
 
 func (es *LogEntries) Get(idx int) *LogEntry {
-	if idx <= es.lastIncludeIndex || idx > es.GetLastLogEntryIndex() {
+	if idx <= es.LastIncludeIndex || idx > es.GetLastLogEntryIndex() {
 		return nil
 	}
 
-	return es.logs[idx-es.lastIncludeIndex]
+	return es.Logs[idx-es.LastIncludeIndex]
 }
 
-// GetCopy 获取 [from,to] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
-func (es *LogEntries) GetCopy(from, to int) []*LogEntry {
-	if from > to {
-		log.Panicf("from(%v) should not bigger than to(%v)", from, to)
+// GetCopy 获取 [from,es.Len()-1] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
+func (es *LogEntries) GetCopy(from int) []*LogEntry {
+	if from > es.Len() {
+		log.Panicf("from(%v) should not bigger than es.Len(%v)", from, es.Len())
 	}
 
-	if from <= es.lastIncludeIndex || to > es.GetLastLogEntryIndex() {
-		return nil
+	if from <= es.LastIncludeIndex {
+		log.Panicf("from(%v) should not less than or equals to LastIncludeIdx(%v)", from, es.LastIncludeIndex)
 	}
 
-	ret := make([]*LogEntry, to-from+1)
-	copy(es.logs[from-es.lastIncludeIndex:to-es.lastIncludeIndex], ret)
+	ret := make([]*LogEntry, es.Len()-from)
+	copy(es.Logs[from-es.LastIncludeIndex:], ret)
 	return ret
 }
 
 // AppendCommand 新加一条日志，返回添加的位置
 func (es *LogEntries) AppendCommand(entry *LogEntry) int {
-	es.logs = append(es.logs, entry)
+	es.Logs = append(es.Logs, entry)
 	return es.GetLastLogEntryIndex()
 }
 
 // RemoveCommandUntil 删除从最后一条，一直到idx（不包括idx）的日志，返回最后一条日志的位置
 func (es *LogEntries) RemoveCommandUntil(idx int) int {
-	if idx > es.GetLastLogEntryIndex() || idx <= es.lastIncludeIndex {
-		log.Panicf("should not remove command until:%v, because lastIncludeIndex:%v, lastLogEntryIndex:%v",
-			idx, es.lastIncludeIndex, es.GetLastLogEntryIndex())
+	if idx > es.GetLastLogEntryIndex() || idx <= es.LastIncludeIndex {
+		log.Panicf("should not remove command until:%v, because LastIncludeIndex:%v, lastLogEntryIndex:%v",
+			idx, es.LastIncludeIndex, es.GetLastLogEntryIndex())
 	}
 
-	es.logs = es.logs[:idx-es.lastIncludeIndex]
+	es.Logs = es.Logs[:idx-es.LastIncludeIndex]
 	return es.GetLastLogEntryIndex()
 }
 
 // AppendCommands 将日志切片加入到logs的后面，返回最后一条日志的位置
 func (es *LogEntries) AppendCommands(entries []*LogEntry) int {
-	es.logs = append(es.logs, entries...)
+	es.Logs = append(es.Logs, entries...)
 	return es.GetLastLogEntryIndex()
 }
 
 func NewLogEntries() *LogEntries {
 	return &LogEntries{
-		lastIncludeIndex: 0,
-		logs:             make([]*LogEntry, 0),
+		LastIncludeIndex: 0,
+		Logs:             make([]*LogEntry, 0),
 	}
 }
