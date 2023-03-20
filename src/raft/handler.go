@@ -7,6 +7,9 @@ type StateHandler interface {
 	//HandleAppendEntries 处理来自其他server的请求追加日志条目rpc
 	HandleAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) error
 
+	//HandleInstallSnapshot 处理来自其他server的安装快照rpc
+	HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error
+
 	//HandleNeedElection 处理心跳超时引起的自己需要参与竞选事件
 	HandleNeedElection()
 
@@ -27,6 +30,9 @@ type StateHandler interface {
 	OnAppendEntriesReply(reply *AppendEntriesReplyMsg)
 
 	OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh)
+
+	//OnSnapshot 处理来自上层service的将快照替换日志的请求
+	HandleSnapshot(req *SnapshotRequest)
 }
 
 //StateHandlerBase 内部持有了三种handler共用的结构
@@ -39,4 +45,24 @@ func (rf *Raft) initHandler() {
 	rf.LeaderStateHandlerInst.Raft = rf
 	rf.FollowerStateHandlerInst.Raft = rf
 	rf.CurrentStateHandler = rf.FollowerStateHandlerInst
+}
+
+func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
+	myLastLogEntryIndex := rf.getLastLogEntryIndex()
+	if req.idx <= myLastLogEntryIndex {
+		//如果以前已经压缩过了，那么直接返回
+		return
+	}
+
+	if req.idx >= myLastLogEntryIndex {
+		if entry := rf.logEntries.Get(req.idx); entry == nil {
+			rf.log(dError, "should no Snapshot logs which have not been appended! current lastIdx:%v, req.idx:%v",
+				myLastLogEntryIndex, req.idx)
+			panic("")
+		} else {
+			rf.snapshot = req.snapshot
+			rf.logEntries.Reinit(entry.Term, myLastLogEntryIndex)
+			rf.log(dSnap, "new snapshot: [%v,%v]", myLastLogEntryIndex, req.idx)
+		}
+	}
 }

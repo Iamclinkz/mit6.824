@@ -150,7 +150,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	err := <-ch
 	if err != nil {
 		rf.log(dWarn, "finish RequestVote rpc from server, error:%v", err)
-		reply.Error = killedError.Error()
+		reply.Error = err.Error()
 		return
 	}
 	rf.log(dTrace, "finish RequestVote rpc from server:%v, reply: %+v", args.CandidateId, *reply)
@@ -207,27 +207,6 @@ func (rf *Raft) sendHeartBeat() {
 	return
 }
 
-func (rf *Raft) genAppendEntriesArgs(serverID int) *AppendEntriesArgs {
-	//todo 仔细检查一下
-	var entries []*LogEntry
-	prevLogIndex := rf.nextIndex[serverID] - 1
-	prevLogTerm := -1
-
-	if prevLogIndex != 0 {
-		prevLogTerm = rf.logs[prevLogIndex].Term
-		entries = rf.logs[rf.nextIndex[serverID]:]
-	}
-
-	return &AppendEntriesArgs{
-		Term:         rf.getTerm(),
-		LeaderId:     rf.me,
-		PrevLogIndex: prevLogIndex,
-		PrevLogTerm:  prevLogTerm,
-		Entries:      entries,
-		LeaderCommit: rf.getLastCommitIdx(),
-	}
-}
-
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	if !ok || reply.Error != "" {
@@ -259,6 +238,61 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 }
 
-func (rf *Raft) GenAppendEntriesArgs(serverID int) *AppendEntriesArgs {
-	return nil
+type SnapshotRequest struct {
+	idx      int
+	snapshot []byte
+	ch       chan struct{}
+}
+
+func (rf *Raft) pushSnapshot(idx int, snapshot []byte) chan struct{} {
+	ch := make(chan struct{}, 1)
+	rf.snapshotCh <- &SnapshotRequest{
+		idx:      idx,
+		snapshot: snapshot,
+		ch:       ch,
+	}
+
+	return ch
+}
+
+type InstallSnapshotRequest struct {
+	Term             int    //发送本消息的leader的当前Term
+	LeaderID         int    //发送本消息的leader的ID
+	LastIncludeIndex int    //Data压缩的最后一条日志的index
+	LastIncludeTerm  int    //Data压缩的最后一条日志的term
+	Data             []byte //实际的被压缩的日志的快照
+}
+
+type InstallSnapshotRequestReply struct {
+	Term  int //回复者的任期号
+	Error string
+}
+
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) {
+	if rf.killed() {
+		reply.Error = killedError.Error()
+		rf.log(dWarn, "I was killed, but got InstallSnapshot from S%v", args.LeaderID)
+		return
+	}
+
+	rf.log(dTrace, "got InstallSnapshot rpc from S%v, [LastTerm:%v, LastIndex:%v, Len:%v]",
+		args.LeaderID, args.LastIncludeTerm, args.LastIncludeIndex, len(args.Data))
+	ch := pushRpcChan(args, reply, rf.installSnapshotReqCh)
+	err := <-ch
+	if err != nil {
+		rf.log(dWarn, "finish InstallSnapshot rpc from server, error:%v", err)
+		reply.Error = err.Error()
+		return
+	}
+	rf.log(dTrace, "finish InstallSnapshot rpc from S%v", args.LeaderID)
+}
+
+func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) {
+	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
+	if !ok || reply.Error != "" {
+		return
+	}
+
+	rf.installSnapshotReplyCh <- reply
+	return
 }

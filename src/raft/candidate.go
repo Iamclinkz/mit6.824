@@ -8,6 +8,11 @@ type CandidateStateHandler struct {
 	StateHandlerBase
 }
 
+func (rf CandidateStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (rf CandidateStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	commandWithNotify.finishWithError()
 }
@@ -96,7 +101,7 @@ func (rf CandidateStateHandler) HandleAppendEntries(args *AppendEntriesArgs, rep
 	if myTerm <= args.Term {
 		rf.setTerm(args.Term)
 		rf.setState(Follower)
-		return rf.CurrentStateHandler.HandleAppendEntries(args,reply)
+		return rf.CurrentStateHandler.HandleAppendEntries(args, reply)
 	}
 
 	//如果我的比较大，不承认对方
@@ -116,7 +121,7 @@ func (rf CandidateStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *
 	if myTerm < args.Term {
 		rf.setTerm(args.Term)
 		rf.setState(Follower)
-		return rf.FollowerStateHandlerInst.HandleRequestVote(args,reply)
+		return rf.FollowerStateHandlerInst.HandleRequestVote(args, reply)
 	}
 
 	//自己的term和请求投票者相同 or 自己的较大，均不投票给对方
@@ -131,10 +136,10 @@ func (rf CandidateStateHandler) HandleNeedElection() {
 	myTerm := rf.getTerm()
 
 	req := &RequestVoteArgs{
-		Term:        myTerm,
-		CandidateId: rf.me,
+		Term:         myTerm,
+		CandidateId:  rf.me,
 		LastLogIndex: rf.getLastLogEntryIndex(),
-		LastLogTerm: rf.getLastLogEntryTerm(),
+		LastLogTerm:  rf.getLastLogEntryTerm(),
 	}
 
 	rf.voter[rf.me] = struct{}{}

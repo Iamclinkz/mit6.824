@@ -6,6 +6,11 @@ type LeaderStateHandler struct {
 	StateHandlerBase
 }
 
+func (rf LeaderStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	pos := rf.leaderAddCommand(commandWithNotify.command)
 	commandWithNotify.finishWithOK(rf.getTerm(), pos)

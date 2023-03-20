@@ -1,6 +1,9 @@
 package raft
 
-import "sync/atomic"
+import (
+	"log"
+	"sync/atomic"
+)
 
 type State uint32
 
@@ -115,16 +118,10 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) getLastCommitIdx() int {
-	//rf.logMu.Lock()
-	//defer rf.logMu.Unlock()
-
 	return rf.commitIndex
 }
 
 func (rf *Raft) setLastCommitIdx(idx int) {
-	//rf.logMu.Lock()
-	//defer rf.logMu.Unlock()
-
 	//简单做个check
 	if idx < rf.commitIndex {
 		rf.log(dError, "last commit index should not decrease: %v->%v", rf.commitIndex, idx)
@@ -132,33 +129,12 @@ func (rf *Raft) setLastCommitIdx(idx int) {
 	rf.commitIndex = idx
 }
 
-func (rf *Raft) getLastCommitTerm() int {
-	//rf.logMu.Lock()
-	//defer rf.logMu.Unlock()
-
-	return rf.commitTerm
-}
-
 func (rf *Raft) getLastLogEntryTerm() int {
-	return rf.logs[len(rf.logs)-1].Term
+	return rf.logEntries.GetLastLogEntryTerm()
 }
 
 func (rf *Raft) getLastLogEntryIndex() int {
-	return len(rf.logs) - 1
-}
-
-func (rf *Raft) setLeader(leaderID int) {
-	//rf.leaderMu.Lock()
-	//defer rf.leaderMu.Unlock()
-
-	rf.currentLeader = leaderID
-}
-
-func (rf *Raft) getLeader() int {
-	//rf.leaderMu.Lock()
-	//defer rf.leaderMu.Unlock()
-
-	return rf.currentLeader
+	return rf.logEntries.GetLastLogEntryIndex()
 }
 
 func (rf *Raft) setVotedFor(votedFor int) {
@@ -178,4 +154,74 @@ func (rf *Raft) getVotedFor() int {
 
 func (rf *Raft) noVoted() bool {
 	return rf.getVotedFor() == -1
+}
+
+//LogEntries 2D中对LogEntry做的封装
+type LogEntries struct {
+	lastIncludeIndex int
+	//logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！logs[0].Term = lastIncludeTerm
+	//如果当前没有快照，那么logs[0].Term = -1
+	logs []*LogEntry
+}
+
+//Reinit 使用两个参数，重建LogEntries
+func (es *LogEntries) Reinit(lastIncludeTerm, lastIncludeIndex int) {
+	es.lastIncludeIndex = lastIncludeIndex
+	es.logs = make([]*LogEntry, 1)
+	es.logs[0] = &LogEntry{
+		Command: nil,
+		Term:    lastIncludeTerm,
+	}
+}
+
+func (es *LogEntries) snapshotLogEntry(lastIncludeIndex int) {
+
+}
+
+func (es *LogEntries) GetLastLogEntryTerm() int {
+	return es.logs[len(es.logs)-1].Term
+}
+
+func (es *LogEntries) GetLastLogEntryIndex() int {
+	return len(es.logs) + es.lastIncludeIndex - 1
+}
+
+func (es *LogEntries) Len() int {
+	return len(es.logs) + es.lastIncludeIndex
+}
+
+func (es *LogEntries) Get(idx int) *LogEntry {
+	if idx <= es.lastIncludeIndex || idx > es.GetLastLogEntryIndex() {
+		return nil
+	}
+
+	return es.logs[idx-es.lastIncludeIndex]
+}
+
+//GetCopy 获取 [from,to] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
+func (es *LogEntries) GetCopy(from, to int) []*LogEntry {
+	if from > to {
+		log.Panicf("from(%v) should not bigger than to(%v)", from, to)
+	}
+
+	if from <= es.lastIncludeIndex || to > es.GetLastLogEntryIndex() {
+		return nil
+	}
+
+	ret := make([]*LogEntry, to-from+1)
+	copy(es.logs[from-es.lastIncludeIndex:to-es.lastIncludeIndex], ret)
+	return ret
+}
+
+//AppendCommand 新加一条日志，返回添加的位置
+func (es *LogEntries) AppendCommand(entry *LogEntry) int {
+	es.logs = append(es.logs, entry)
+	return es.Len() - 1
+}
+
+func NewLogEntries() *LogEntries {
+	return &LogEntries{
+		lastIncludeIndex: 0,
+		logs:             make([]*LogEntry, 0),
+	}
 }

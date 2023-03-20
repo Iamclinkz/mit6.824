@@ -62,8 +62,6 @@ type Raft struct {
 	//log 有关
 	//logMu sync.Mutex  //下面几个字段日志相关的字段的锁
 
-	//logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！logs[0].Term = -1
-	logs      []*LogEntry               //因为有了snapshot，所以实际的日志长度是 len(rf.logs) + lastIncludeIndex
 	commandCh chan *CommandWithNotifyCh //只有leader使用，来自客户端的LogEntry
 	//下面两个字段的关系可以见 https://www.zhihu.com/question/61726492/answer/190736554
 	//commitIndex 是本raft感知到(commit)的最后一条log entry的index
@@ -97,6 +95,10 @@ type Raft struct {
 	//因为只在主go程中访问，所以不需要加锁
 	CurrentStateHandler StateHandler
 
+	//安装快照rpc
+	installSnapshotReqCh   chan *rpcChMsg
+	installSnapshotReplyCh chan *InstallSnapshotRequestReply
+
 	//心跳/附加日志rpc
 	lastHeartBeatTime    int64                       //上次heartBeat的时间
 	needHeartBeat        chan struct{}               //需要发送心跳
@@ -114,9 +116,11 @@ type Raft struct {
 	leastVoterNum         int
 
 	//2D snapshot
-	lastIncludeIndex int    //原本的rf.logs的 [0,lastIncludeIndex] 都被当前的snapshot给替代了
-	lastIncludeTerm  int    //最后一条被snapshot(下标为lastIncludeIndex的日志)替代的日志的term
-	snapshot         []byte //[0,lastIncludeIndex] 的日志的快照
+	//lastIncludeIndex int    //原本的rf.logs的 [0,lastIncludeIndex] 都被当前的snapshot给替代了，实际放到了rf.logEntries.lastIncludeIndex中
+	//lastIncludeTerm  int    //最后一条被snapshot(下标为lastIncludeIndex的日志)替代的日志的term，实际放到了rf.logEntries[0].Term中
+	logEntries *LogEntries           //2D：将raft的日志项封装成一个结构了
+	snapshot   []byte                //[0,lastIncludeIndex] 的日志的快照
+	snapshotCh chan *SnapshotRequest //存放Snapshot()请求的request的chan
 }
 
 //
@@ -138,14 +142,14 @@ func (rf *Raft) persist() {
 		return
 	}
 
-	if err := e.Encode(rf.logs); err != nil {
+	if err := e.Encode(rf.logEntries); err != nil {
 		rf.log(dWarn, "failed to persist current logs, len:%v", len(rf.logs))
 		return
 	}
 
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
-	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v", rf.getVotedFor(), len(rf.logs))
+	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v", rf.getVotedFor(), rf.logEntries.Len())
 }
 
 //
@@ -161,7 +165,7 @@ func (rf *Raft) readPersist(data []byte) {
 	d := labgob.NewDecoder(r)
 	var term int
 	var votedFor int
-	var logs []*LogEntry
+	var logs *LogEntries
 
 	if d.Decode(&term) != nil {
 		rf.log(dWarn, "failed to load term from persist")
@@ -178,10 +182,12 @@ func (rf *Raft) readPersist(data []byte) {
 		return
 	}
 
+	//todo 2D
+
 	//因为readPersist只在开始时调用，所以不需要加锁。注意在readPersister中不应该有rf.Persist()的操作！否则可能死锁！
 	atomic.StoreInt32(&rf.currentTerm, int32(term))
 	rf.votedFor = votedFor
-	rf.logs = logs
+	rf.logEntries = logs
 	rf.log(dPersist, "successful loaded from persist")
 }
 
@@ -210,7 +216,9 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 //压缩完成之后，会通知raft层，然后raft层可以将压缩成功的日志在rf.logs中删除掉，并且用snapshot来代替这些日志。
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
-
+	//todo 这里要不要让上层调用阻塞一下？
+	replyCh := rf.pushSnapshot(index, snapshot)
+	<-replyCh
 }
 
 //
@@ -315,11 +323,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.needElectionCh = make(chan struct{})
 	rf.requestVoteReqCh = make(chan *rpcChMsg, 2048)
 	rf.appendEntriesReplyCh = make(chan *AppendEntriesReplyMsg, 2048)
-	rf.logs = make([]*LogEntry, 1)
-	rf.logs[0] = &LogEntry{
-		Command: nil,
-		Term:    -1,
-	}
 
 	rf.commandCh = make(chan *CommandWithNotifyCh, 2048)
 	// Your initialization code here (2A, 2B, 2C).
@@ -334,7 +337,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	//因为看着上层创建的applyCh的len是0，也就是说如果我们主go程向其中push，有可能阻塞，
 	//所以单独搞一个线程，往里面push
 	rf.applyTransCh = make(chan ApplyMsg, 2048)
+	rf.snapshotCh = make(chan *SnapshotRequest, 2028)
 
+	rf.logEntries = NewLogEntries()
+	rf.logEntries.Reinit(-1, 0)
 	//rf.stopCandidateCh = make(chan struct{},1)
 
 	rf.leastVoterNum = len(peers)/2 + 1
@@ -385,6 +391,20 @@ func (rf *Raft) startMainLoop() {
 			err := rf.CurrentStateHandler.HandleAppendEntries(req, resp)
 			chMsg.finish(err)
 
+		//安装快照rpc
+		case chMsg := <-rf.installSnapshotReqCh:
+			var req *InstallSnapshotRequest
+			var resp *InstallSnapshotRequestReply
+			var ok bool
+			if req, ok = chMsg.RpcReq.(*InstallSnapshotRequest); !ok {
+				panic("program fault")
+			}
+			if resp, ok = chMsg.RpcResp.(*InstallSnapshotRequestReply); !ok {
+				panic("program fault")
+			}
+			err := rf.CurrentStateHandler.HandleInstallSnapshot(req, resp)
+			chMsg.finish(err)
+
 		//来自定时器的心跳超时，应该开启选举事件
 		case <-rf.needElectionCh:
 			rf.CurrentStateHandler.HandleNeedElection()
@@ -407,6 +427,9 @@ func (rf *Raft) startMainLoop() {
 		case reply := <-rf.appendEntriesReplyCh:
 			rf.CurrentStateHandler.OnAppendEntriesReply(reply)
 
+		case snapShotReq := <-rf.snapshotCh:
+			rf.CurrentStateHandler.HandleSnapshot(snapShotReq)
+
 		case <-rf.closeCh:
 			return
 		}
@@ -421,12 +444,11 @@ func (rf *Raft) leaderAddCommand(command interface{}) (pos int) {
 		Term:    rf.getTerm(),
 	}
 
-	rf.logs = append(rf.logs, entry)
+	pos = rf.logEntries.AppendCommand(entry)
 	rf.persist()
-	rf.nextIndex[rf.me] = len(rf.logs) + 1
-	rf.matchIndex[rf.me] = len(rf.logs)
+	rf.nextIndex[rf.me] = pos + 1
+	rf.matchIndex[rf.me] = pos
 
-	pos = len(rf.logs) - 1
 	if command == nil {
 		rf.log(dWarn, "get nil command, idx:%v", pos)
 	}
@@ -437,7 +459,7 @@ func (rf *Raft) leaderAddCommand(command interface{}) (pos int) {
 
 //applyLog 只可以在主go程中使用。将 [ lastApplied + 1, to ] 的日志apply，即传递、应用到上层的状态机
 func (rf *Raft) applyLog(to int) {
-	if to >= len(rf.logs) {
+	if to >= rf.logEntries.Len() {
 		//如果希望提交的log的index大于当前logs切片的长度
 		rf.log(dError, "try to apply log:%v, which is greater than len(rf.logs):%v", to, len(rf.logs))
 		panic("")
@@ -453,10 +475,10 @@ func (rf *Raft) applyLog(to int) {
 	for i := rf.lastApplied + 1; i <= to; i++ {
 		rf.applyTransCh <- ApplyMsg{
 			CommandValid: true,
-			Command:      rf.logs[i].Command,
+			Command:      rf.logEntries.Get(i),
 			CommandIndex: i,
 		}
-		rf.log(dClient, "apply log entry, index: %v,term: %v", i, rf.logs[i].Term)
+		rf.log(dClient, "apply log entry, index: %v,term: %v", i, rf.logEntries.Get(i).Term)
 	}
 
 	//rf.log(dClient,"apply log entry: %v to %v",rf.lastApplied + 1,to)
@@ -469,11 +491,8 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 
 	//将所有的peer的matchIndex统计（自己的matchIndex为len(rf.logs)-1)，然后找到len(rf.logs)/2 + 1的位置，即commitIndex
 	for i := 0; i < len(rf.peers); i++ {
-		if i != rf.me {
-			tmp[i] = rf.matchIndex[i]
-		}
+		tmp[i] = rf.matchIndex[i]
 	}
-	tmp[rf.me] = len(rf.logs) - 1
 
 	QuickSort(tmp, 0, len(tmp)-1)
 
@@ -481,7 +500,8 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 	oldIdx := rf.getLastCommitIdx()
 	newCommitIdx := tmp[len(rf.peers)/2]
 
-	if rf.logs[newCommitIdx].Term != rf.getTerm() {
+	//todo bug 明天看一下。。
+	if entry := rf.logEntries.Get(newCommitIdx); entry != nil && entry.Term != rf.getTerm() {
 		//卡了一天的bug。。5.4.2 leader只能按照超过半数来提交本term的日志，而不能提交之前term的日志
 		//换句话说，如果当前更新到的commitIndex所对应的log不是我们本term添加上的，那么就不应该更新
 		return false

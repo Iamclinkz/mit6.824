@@ -6,6 +6,11 @@ type FollowerStateHandler struct {
 	StateHandlerBase
 }
 
+func (rf FollowerStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (rf FollowerStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	commandWithNotify.finishWithError()
 }
