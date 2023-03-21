@@ -218,7 +218,7 @@ func (es *LogEntries) GetCopy(from int) []*LogEntry {
 	}
 
 	ret := make([]*LogEntry, es.Len()-from)
-	copy(es.Logs[from-es.LastIncludeIndex:], ret)
+	copy(ret, es.Logs[from-es.LastIncludeIndex:])
 	return ret
 }
 
