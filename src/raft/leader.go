@@ -16,7 +16,7 @@ func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotR
 		return
 	}
 
-	rf.nextIndex[msg.serverID] = msg.args.LastIncludeIndex
+	rf.nextIndex[msg.serverID] = msg.args.LastIncludeIndex + 1
 	rf.log(dSnap, "revive success InstallSnapshot msg from S%v, update nextIndex:%v",
 		msg.serverID, msg.args.LastIncludeIndex)
 }
@@ -80,47 +80,54 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	//最极端的情况，当回退到 rf.nextIndex[peerID] == rf.logEntries.LastIncludeIndex 时，说明我们当前的
 	//rf.logEntries.logs已经无法让follower匹配了，这种情况下，我们设置rf.nextIndex[peerID]为
 	//rf.logEntries.LastIncludeIndex 这样下次心跳的时候，发送安装快照rpc，而不是增加日志rpc。
-	myLastIncludeIndex := rf.logEntries.LastIncludeIndex
-	peerUnMatchIdx := rf.nextIndex[peerID]
-	unMatchEntry := rf.logEntries.Get(peerUnMatchIdx)
-	rf.log(dLeader, "receive fail reply from S%v, peer do not match:%v, my lastIncludeIndex:%v",
-		peerID, peerUnMatchIdx, myLastIncludeIndex)
-	if peerUnMatchIdx <= myLastIncludeIndex+1 || unMatchEntry == nil ||
-		rf.logEntries.GetLastIncludeTerm() == unMatchEntry.Term {
-		//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
-		//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
-		rf.nextIndex[peerID] = myLastIncludeIndex
-		rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
+	//myLastIncludeIndex := rf.logEntries.LastIncludeIndex
+	//peerUnMatchIdx := rf.nextIndex[peerID]
+	//unMatchEntry := rf.logEntries.Get(peerUnMatchIdx)
+	//rf.log(dLeader, "receive fail reply from S%v, peer do not match:%v, my lastIncludeIndex:%v, myLog:%v",
+	//	peerID, peerUnMatchIdx, myLastIncludeIndex,rf.logEntries.String())
+	//if peerUnMatchIdx <= myLastIncludeIndex+1 || unMatchEntry == nil ||
+	//	rf.logEntries.GetLastIncludeTerm() == unMatchEntry.Term {
+	//	//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
+	//	//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
+	//	rf.nextIndex[peerID] = myLastIncludeIndex
+	//	rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
+	//	return
+	//}
+	//
+	////回退到unMatchEntry.Term（不匹配的日志的term）的前一个term的最后一条
+	//term := unMatchEntry.Term
+	//start := peerUnMatchIdx - 1
+	//entry := rf.logEntries.Get(start)
+	//for entry != nil && entry.Term == term {
+	//	start--
+	//	entry = rf.logEntries.Get(start)
+	//}
+	//
+	////我们的日志中，当前是存在不匹配的日志的term之前的term的，我们去找该term的第一条
+	//if entry == nil {
+	//	//如果当前已经无法再回退了（已经退到snapshot的最后一条），
+	//	//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
+	//	rf.nextIndex[peerID] = myLastIncludeIndex
+	//	rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
+	//	return
+	//}
+	//
+	//term = entry.Term
+	//for entry != nil && entry.Term == term {
+	//	start--
+	//	entry = rf.logEntries.Get(start)
+	//}
+	//
+	//rf.nextIndex[peerID] = start + 1
+	rf.nextIndex[peerID]--
+	if rf.nextIndex[peerID] < rf.logEntries.GetLastIncludeIndex() {
+		rf.nextIndex[peerID] = rf.logEntries.GetLastIncludeIndex()
+		rf.log(dLeader, "receive fail reply from S%v, change nextIdx to myLastIncludeIndex:%v, install snapshot",
+			peerID, rf.nextIndex[peerID])
 		return
 	}
-
-	//回退到unMatchEntry.Term（不匹配的日志的term）的前一个term的最后一条
-	term := unMatchEntry.Term
-	start := peerUnMatchIdx - 1
-	entry := rf.logEntries.Get(start)
-	for entry != nil && entry.Term == term {
-		start--
-		entry = rf.logEntries.Get(start)
-	}
-
-	//我们的日志中，当前是存在不匹配的日志的term之前的term的，我们去找该term的第一条
-	if entry == nil {
-		//如果当前已经无法再回退了（已经退到snapshot的最后一条），
-		//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
-		rf.nextIndex[peerID] = myLastIncludeIndex
-		rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
-		return
-	}
-
-	term = entry.Term
-	for entry != nil && entry.Term == term {
-		start--
-		entry = rf.logEntries.Get(start)
-	}
-
-	rf.nextIndex[peerID] = start + 1
-	rf.log(dLeader, "receive fail reply from S%v, match:%v, next:%v",
-		peerID, rf.matchIndex[peerID], rf.nextIndex[peerID])
+	rf.log(dLeader, "receive fail reply from S%v, let nextIdx-- to:%v",
+		peerID, rf.nextIndex[peerID])
 }
 
 func (rf LeaderStateHandler) OnCandidateOverTimeTick() {

@@ -1,7 +1,9 @@
 package raft
 
 import (
+	"fmt"
 	"log"
+	"strconv"
 	"sync/atomic"
 )
 
@@ -175,12 +177,30 @@ func (es *LogEntries) Reinit(lastIncludeTerm, lastIncludeIndex int) {
 	}
 }
 
+// Reinit 使用两个参数，重建LogEntries
+func (es *LogEntries) String() string {
+	entriesStr := "["
+	for idx, entry := range es.Logs {
+		if idx != 0 {
+			entriesStr += strconv.Itoa(entry.Term) + " "
+		}
+	}
+	entriesStr += "]"
+
+	return fmt.Sprintf("LastIncludeIndex:%v, LastIncludeTerm:%v, Logs:%v",
+		es.LastIncludeIndex, es.GetLastIncludeTerm(), entriesStr)
+}
+
 func (es *LogEntries) snapshotLogEntry(lastIncludeIndex int) {
 
 }
 
 func (es *LogEntries) GetLastLogEntryTerm() int {
 	return es.Logs[len(es.Logs)-1].Term
+}
+
+func (es *LogEntries) GetLastIncludeIndex() int {
+	return es.LastIncludeIndex
 }
 
 func (es *LogEntries) GetLastIncludeTerm() int {
