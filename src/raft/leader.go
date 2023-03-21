@@ -83,7 +83,8 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	myLastIncludeIndex := rf.logEntries.LastIncludeIndex
 	peerUnMatchIdx := rf.nextIndex[peerID]
 	unMatchEntry := rf.logEntries.Get(peerUnMatchIdx)
-
+	rf.log(dLeader, "receive fail reply from S%v, peer do not match:%v, my lastIncludeIndex:%v",
+		peerID, peerUnMatchIdx, myLastIncludeIndex)
 	if peerUnMatchIdx <= myLastIncludeIndex+1 || unMatchEntry == nil ||
 		rf.logEntries.GetLastIncludeTerm() == unMatchEntry.Term {
 		//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
