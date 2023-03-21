@@ -7,7 +7,7 @@ type LeaderStateHandler struct {
 }
 
 func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotReplyMsg) {
-	if msg.reply.Term != rf.getTerm() {
+	if msg.reply.Term > rf.getTerm() {
 		rf.setTerm(msg.reply.Term)
 		rf.setState(Follower)
 	}

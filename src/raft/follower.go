@@ -54,8 +54,8 @@ func (rf FollowerStateHandler) HandleAppendEntries(args *AppendEntriesArgs, repl
 		rf.setTerm(args.Term)
 	}
 
-	rf.log(dLog2, "receive heartBeat from S%v, lastIdx:%v, lastTerm:%v, entriesLen:%v",
-		args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, len(args.Entries))
+	rf.log(dLog2, "receive heartBeat from S%v, lastIdx:%v, lastTerm:%v, entriesLen:%v, leaderCommit:%v",
+		args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, len(args.Entries), args.LeaderCommit)
 
 	rf.reSetHeartBeat()
 
