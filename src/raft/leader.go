@@ -81,15 +81,16 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	//不成功，但是我们的term起码和对方一样大，如果选举过程没啥问题，说明本次发的没有对方希望的日志（没有匹配成功）
 	//回退一下nextIndex
 
-	//rf.Logs[start].Term是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
+	//rf.nextIndex[peerID]是没匹配上的日志，回退到没匹配上的日志的上一个term的第一条进行发送
 	//最极端的情况，当回退到 rf.nextIndex[peerID] == rf.logEntries.LastIncludeIndex 时，说明我们当前的
 	//rf.logEntries.logs已经无法让follower匹配了，这种情况下，我们设置rf.nextIndex[peerID]为
 	//rf.logEntries.LastIncludeIndex 这样下次心跳的时候，发送安装快照rpc，而不是增加日志rpc。
 	lastIncludeIndex := rf.logEntries.LastIncludeIndex
 	unMatchIdx := rf.nextIndex[peerID]
 
-	if rf.nextIndex[peerID] <= lastIncludeIndex+1 ||
-		rf.logEntries.GetLastIncludeTerm() == rf.logEntries.Get(unMatchIdx).Term {
+	unMatchEntry := rf.logEntries.Get(unMatchIdx)
+	if rf.nextIndex[peerID] <= lastIncludeIndex+1 || unMatchEntry == nil ||
+		rf.logEntries.GetLastIncludeTerm() == unMatchEntry.Term {
 		//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
 		//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
 		rf.nextIndex[peerID] = lastIncludeIndex

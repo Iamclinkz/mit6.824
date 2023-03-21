@@ -189,7 +189,7 @@ func (rf *Raft) sendHeartBeat() {
 					PrevLogTerm:  rf.logEntries.Logs[rf.nextIndex[serverID]-rf.logEntries.LastIncludeIndex-1].Term,
 					Entries:      rf.logEntries.GetCopy(rf.nextIndex[serverID]),
 				}
-				rf.log(dLeader, "leader send entries to S%v, PrevLogIndex:%v, PrevLogTerm:%v, Len of Entries:%v,",
+				rf.log(dLeader, "leader send entries to S%v, PrevLogIndex:%v, PrevLogTerm:%v, Len of Entries:%v",
 					serverID, req.PrevLogIndex, req.PrevLogTerm, len(req.Entries))
 				go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 			} else {
