@@ -235,7 +235,7 @@ func (es *LogEntries) RemoveCommandUntil(idx int) int {
 			idx, es.LastIncludeIndex, es.GetLastLogEntryIndex())
 	}
 
-	es.Logs = es.Logs[:idx-es.LastIncludeIndex]
+	es.Logs = es.Logs[:idx-es.LastIncludeIndex+1]
 	return es.GetLastLogEntryIndex()
 }
 

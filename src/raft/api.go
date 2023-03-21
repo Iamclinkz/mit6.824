@@ -190,11 +190,6 @@ func (rf *Raft) sendHeartBeat() {
 				}
 				rf.log(dLeader, "leader send entries to S%v, PrevLogIndex:%v, PrevLogTerm:%v, Len of Entries:%v,",
 					serverID, req.PrevLogIndex, req.PrevLogTerm, len(req.Entries))
-				for i := 0; i < len(req.Entries); i++ {
-					if req.Entries[i] == nil {
-						rf.log(dError, "find nil at:%v", i)
-					}
-				}
 				go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 			} else {
 				//如果给serverID发送的第一条日志已经被压缩了，那么发送InstallSnapshot

@@ -614,6 +614,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
 	rf.logEntries.Logs = append(rf.logEntries.Logs[:1], args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]...)
 	rf.log(dLog, "doAppendEntry use leader's logs, change lastLogIndex: %v -> %v", lastLogEntryIdx, rf.logEntries.GetLastLogEntryIndex())
+	rf.thisTermMatchedLeader = true
 	return true
 }
 
