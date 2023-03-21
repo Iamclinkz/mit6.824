@@ -158,6 +158,7 @@ func (rf *Raft) noVoted() bool {
 
 // LogEntries 2D中对LogEntry做的封装
 type LogEntries struct {
+	//被快照压缩的最后一条日志的index，初始值为0
 	LastIncludeIndex int
 	//Logs 存放实际的log的切片。注意，使用logs[0]作为哨兵！Logs[0].Term = lastIncludeTerm
 	//如果当前没有快照，那么logs[0].Term = -1
@@ -206,7 +207,7 @@ func (es *LogEntries) Get(idx int) *LogEntry {
 	return es.Logs[idx-es.LastIncludeIndex]
 }
 
-// GetCopy 获取 [from,es.Len()-1] 的LogEntry的切片的copy，如果to还没有，或者from已经被snapshot了，返回nil
+// GetCopy 获取 [from,es.Len()-1] 的LogEntry的切片的copy
 func (es *LogEntries) GetCopy(from int) []*LogEntry {
 	if from > es.Len() {
 		log.Panicf("from(%v) should not bigger than es.Len(%v)", from, es.Len())

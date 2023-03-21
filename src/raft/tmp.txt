@@ -1,60 +1,59 @@
-000011 LOG1 S0 T0 Follow | change state Follower -> Follower
-000012 WARN S0 T0 Follow | begin restart...
-000012 INFO S0 T0 Follow | request voterNum:2
-000014 LOG1 S1 T0 Follow | change state Follower -> Follower
-000014 WARN S1 T0 Follow | begin restart...
-000015 INFO S1 T0 Follow | request voterNum:2
-000015 LOG1 S2 T0 Follow | change state Follower -> Follower
-000016 WARN S2 T0 Follow | begin restart...
-000016 INFO S2 T0 Follow | request voterNum:2
+000003 LOG1 S0 T0 Follow | change state Follower -> Follower
+000004 WARN S0 T0 Follow | begin restart...
+000005 INFO S0 T0 Follow | request voterNum:2
+000008 LOG1 S1 T0 Follow | change state Follower -> Follower
+000008 WARN S1 T0 Follow | begin restart...
+000009 INFO S1 T0 Follow | request voterNum:2
+000010 LOG1 S2 T0 Follow | change state Follower -> Follower
+000010 WARN S2 T0 Follow | begin restart...
+000011 INFO S2 T0 Follow | request voterNum:2
 Test (2D): snapshots basic ...
-004985 TIMR S2 T0 Follow | find leader heartBeat over time, start election!
-004987 LOG1 S2 T0 Candid | change state Follower -> Candidate
-004987 TERM S2 T0 Candid | term: 0 -> 1
-004993 PERS S2 T1 Candid | successfully persisted information, votedFor:-1, logLen:1
-004994 PERS S2 T1 Candid | successfully persisted information, votedFor:2, logLen:1
-004994 TRCE S2 T1 Candid | send RequestVote to S1
-004994 TRCE S2 T1 Candid | send RequestVote to S0
-005000 TRCE S0 T0 Follow | got RequestVote rpc from S2: {Term:1 CandidateId:2 LastLogIndex:0 LastLogTerm:-1}
-005001 TERM S0 T0 Follow | term: 0 -> 1
-005000 TRCE S1 T0 Follow | got RequestVote rpc from S2: {Term:1 CandidateId:2 LastLogIndex:0 LastLogTerm:-1}
-005002 PERS S0 T1 Follow | successfully persisted information, votedFor:-1, logLen:1
-005002 TRCE S0 T1 Follow | check S2's last log index:0 is greater than mine:0 √
-005002 TERM S1 T0 Follow | term: 0 -> 1
-005002 PERS S0 T1 Follow | successfully persisted information, votedFor:2, logLen:1
-005002 TRCE S0 T1 Follow | finish RequestVote rpc from server:2, reply: {Term:1 VoteGranted:true ServerID:0 Error:}
-005003 PERS S1 T1 Follow | successfully persisted information, votedFor:-1, logLen:1
-005003 TRCE S1 T1 Follow | check S2's last log index:0 is greater than mine:0 √
-005003 PERS S1 T1 Follow | successfully persisted information, votedFor:2, logLen:1
-005003 TRCE S1 T1 Follow | finish RequestVote rpc from server:2, reply: {Term:1 VoteGranted:true ServerID:0 Error:}
-005004 TRCE S2 T1 Candid | S0 voted:√
-005004 VOTE S2 T1 Candid | receive vote from S0, current voters:[2 0]
-005004 LEAD S2 T1 Candid | I am the new leader
-005004 LOG1 S2 T1 Leader | change state Candidate -> Leader
-005004 TRCE S2 T1 Leader | S1 voted:√
-005006 LOG2 S1 T1 Follow | receive heartBeat from S2, lastIdx:0, lastTerm:-1, entriesLen:0
-005006 LOG2 S0 T1 Follow | receive heartBeat from S2, lastIdx:0, lastTerm:-1, entriesLen:0
-005102 PERS S2 T1 Leader | successfully persisted information, votedFor:2, logLen:2
-005104 LOG2 S2 T1 Leader | leader add command, idx:1
-005104 TRCE S2 T1 Leader | send heartbeat to other server...
-005104 CLNT S2 T1 Leader | receive command, and successfully push to idx:1
+004918 TIMR S2 T0 Follow | find leader heartBeat over time, start election!
+004919 LOG1 S2 T0 Candid | change state Follower -> Candidate
+004919 TERM S2 T0 Candid | term: 0 -> 1
+004921 PERS S2 T1 Candid | successfully persisted information, votedFor:-1, logLen:1
+004921 PERS S2 T1 Candid | successfully persisted information, votedFor:2, logLen:1
+004921 TRCE S2 T1 Candid | send RequestVote to S1
+004923 TRCE S1 T0 Follow | got RequestVote rpc from S2: {Term:1 CandidateId:2 LastLogIndex:0 LastLogTerm:-1}
+004924 TERM S1 T0 Follow | term: 0 -> 1
+004924 PERS S1 T1 Follow | successfully persisted information, votedFor:-1, logLen:1
+004924 TRCE S1 T1 Follow | check S2's last log index:0 is greater than mine:0 √
+004924 PERS S1 T1 Follow | successfully persisted information, votedFor:2, logLen:1
+004924 TRCE S1 T1 Follow | finish RequestVote rpc from server:2, reply: {Term:1 VoteGranted:true ServerID:0 Error:}
+004925 TRCE S2 T1 Candid | S1 voted:√
+004926 VOTE S2 T1 Candid | receive vote from S1, current voters:[2 1]
+004926 LEAD S2 T1 Candid | I am the new leader
+004926 LEAD S2 T1 Leader | leader send entries to S0, PrevLogIndex:0, PrevLogTerm:-1, Len of Entries:0,
+004926 LEAD S2 T1 Leader | leader send entries to S1, PrevLogIndex:0, PrevLogTerm:-1, Len of Entries:0,
+004926 LOG1 S2 T1 Leader | change state Candidate -> Leader
+004928 LOG2 S1 T1 Follow | receive heartBeat from S2, lastIdx:0, lastTerm:-1, entriesLen:0
+004928 LOG1 S1 T1 Follow | doAppendEntry use leader's logs, change lastLogIndex: 0 -> 0
+004928 TRCE S2 T1 Leader | send RequestVote to S0
+004929 TRCE S0 T0 Follow | got RequestVote rpc from S2: {Term:1 CandidateId:2 LastLogIndex:0 LastLogTerm:-1}
+004930 TERM S0 T0 Follow | term: 0 -> 1
+004930 PERS S0 T1 Follow | successfully persisted information, votedFor:-1, logLen:1
+004930 TRCE S0 T1 Follow | check S2's last log index:0 is greater than mine:0 √
+004930 PERS S0 T1 Follow | successfully persisted information, votedFor:2, logLen:1
+004930 TRCE S0 T1 Follow | finish RequestVote rpc from server:2, reply: {Term:1 VoteGranted:true ServerID:0 Error:}
+004931 TRCE S2 T1 Leader | S0 voted:√
+004932 LOG2 S0 T1 Follow | receive heartBeat from S2, lastIdx:0, lastTerm:-1, entriesLen:0
+004932 LOG1 S0 T1 Follow | doAppendEntry use leader's logs, change lastLogIndex: 0 -> 0
+005279 PERS S2 T1 Leader | successfully persisted information, votedFor:2, logLen:2
+005279 LOG2 S2 T1 Leader | leader add command, idx:1
+005279 CLNT S2 T1 Leader | receive command, and successfully push to idx:1
+005279 TRCE S2 T1 Leader | send heartbeat to other server...
+005279 LEAD S2 T1 Leader | leader send entries to S0, PrevLogIndex:0, PrevLogTerm:-1, Len of Entries:1,
+005279 ERRO S2 T1 Leader | find nil at:0
+005280 LEAD S2 T1 Leader | leader send entries to S1, PrevLogIndex:0, PrevLogTerm:-1, Len of Entries:1,
+005280 ERRO S2 T1 Leader | find nil at:0
 panic: gob: encodeArray: nil element
 
-goroutine 50 [running]:
-6.824/labrpc.(*ClientEnd).Call(0x14000156320, {0x100e9770d?, 0x14000100230?}, {0x100eee900, 0x1400009c840}, {0x100eee940, 0x14000094220})
-	/Users/sunliyuan/code/golang/goland project/6.824/src/labrpc/labrpc.go:94 +0x2ac
-6.824/raft.(*Raft).sendAppendEntries(0x14000175860, 0x1, 0x1400009c840, 0x14000094220)
-	/Users/sunliyuan/code/golang/goland project/6.824/src/raft/api.go:215 +0x68
+goroutine 24 [running]:
+6.824/labrpc.(*ClientEnd).Call(0xc00007c540, {0x64a57c?, 0x0?}, {0x5f8640, 0xc0001e0280}, {0x5f8680, 0xc00007c6a0})
+	/exiasun-cbs/codes/go/raft/src/labrpc/labrpc.go:94 +0x385
+6.824/raft.(*Raft).sendAppendEntries(0xc0000d5d40, 0x1, 0xc0001e0280, 0xc00007c6a0)
+	/exiasun-cbs/codes/go/raft/src/raft/api.go:216 +0x66
 created by 6.824/raft.(*Raft).sendHeartBeat
-	/Users/sunliyuan/code/golang/goland project/6.824/src/raft/api.go:197 +0x348
-panic: gob: encodeArray: nil element
-
-goroutine 49 [running]:
-6.824/labrpc.(*ClientEnd).Call(0x14000156300, {0x100e9770d?, 0x10?}, {0x100eee900, 0x1400009c800}, {0x100eee940, 0x14000094200})
-	/Users/sunliyuan/code/golang/goland project/6.824/src/labrpc/labrpc.go:94 +0x2ac
-6.824/raft.(*Raft).sendAppendEntries(0x14000175860, 0x0, 0x1400009c800, 0x14000094200)
-	/Users/sunliyuan/code/golang/goland project/6.824/src/raft/api.go:215 +0x68
-created by 6.824/raft.(*Raft).sendHeartBeat
-	/Users/sunliyuan/code/golang/goland project/6.824/src/raft/api.go:197 +0x348
+	/exiasun-cbs/codes/go/raft/src/raft/api.go:198 +0x48a
 exit status 2
-FAIL	6.824/raft	1.053s
+FAIL	6.824/raft	0.532s

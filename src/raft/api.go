@@ -1,6 +1,5 @@
 package raft
 
-//
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make(). set
@@ -12,7 +11,6 @@ package raft
 // in part 2D you'll want to send other kinds of messages (e.g.,
 // snapshots) on the applyCh, but set CommandValid to false for these
 // other uses.
-//
 type ApplyMsg struct {
 	CommandValid bool        //是否应该被apply
 	Command      interface{} //被apply的指令本身
@@ -36,7 +34,7 @@ type CommandNotify struct {
 	idx  int
 }
 
-//pushCommand 副go程接受的来自客户端的command，扔给主go程处理
+// pushCommand 副go程接受的来自客户端的command，扔给主go程处理
 func (rf *Raft) pushCommand(command interface{}) chan *CommandNotify {
 	commandWithNotifyCh := &CommandWithNotifyCh{
 		command:  command,
@@ -47,7 +45,7 @@ func (rf *Raft) pushCommand(command interface{}) chan *CommandNotify {
 	return commandWithNotifyCh.notifyCh
 }
 
-//finishWithError 主go程出错（例如当前状态不对），给客户端返回错误
+// finishWithError 主go程出错（例如当前状态不对），给客户端返回错误
 func (c *CommandWithNotifyCh) finishWithError() {
 	c.notifyCh <- &CommandNotify{
 		term: -1,
@@ -78,10 +76,8 @@ type RequestVoteArgs struct {
 	LastLogTerm  int //候选人最后一条日志条目的任期号
 }
 
-//
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
-//
 type RequestVoteReply struct {
 	// Your data here (2A).
 	Term        int  //回复者的任期号
@@ -90,7 +86,6 @@ type RequestVoteReply struct {
 	Error       string
 }
 
-//
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
 // expects RPC arguments in args.
@@ -118,7 +113,6 @@ type RequestVoteReply struct {
 // capitalized all field names in structs passed over RPC, and
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
-//
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.log(dTrace, "send RequestVote to S%v", server)
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -179,7 +173,7 @@ type AppendEntriesReplyMsg struct {
 	serverID int
 }
 
-//sendHeartBeat 给所有的server发送带有日志目录的心跳，不阻塞
+// sendHeartBeat 给所有的server发送带有日志目录的心跳，不阻塞
 func (rf *Raft) sendHeartBeat() {
 	myTerm := rf.getTerm()
 	for serverID, _ := range rf.peers {
@@ -193,6 +187,13 @@ func (rf *Raft) sendHeartBeat() {
 					PrevLogIndex: rf.nextIndex[serverID] - 1,
 					PrevLogTerm:  rf.logEntries.Logs[rf.nextIndex[serverID]-1].Term,
 					Entries:      rf.logEntries.GetCopy(rf.nextIndex[serverID]),
+				}
+				rf.log(dLeader, "leader send entries to S%v, PrevLogIndex:%v, PrevLogTerm:%v, Len of Entries:%v,",
+					serverID, req.PrevLogIndex, req.PrevLogTerm, len(req.Entries))
+				for i := 0; i < len(req.Entries); i++ {
+					if req.Entries[i] == nil {
+						rf.log(dError, "find nil at:%v", i)
+					}
 				}
 				go rf.sendAppendEntries(serverID, req, &AppendEntriesReply{})
 			} else {

@@ -18,9 +18,11 @@ package raft
 //
 
 import (
-	"6.824/labgob"
 	"bytes"
 	"math/rand"
+
+	"6.824/labgob"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -332,8 +334,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyTransCh = make(chan ApplyMsg, 2048)
 	rf.snapshotCh = make(chan *SnapshotRequest, 2028)
 
-	rf.logEntries = NewLogEntries()
-	rf.logEntries.Reinit(-1, 0)
+	if rf.logEntries == nil {
+		rf.logEntries = NewLogEntries()
+		rf.logEntries.Reinit(-1, 0)
+	}
+
 	//rf.stopCandidateCh = make(chan struct{},1)
 
 	rf.leastVoterNum = len(peers)/2 + 1
@@ -478,6 +483,7 @@ func (rf *Raft) applyLog(to int) {
 		if entry == nil {
 			rf.log(dError, "try to apply log idx:%v, which is not contains in current log entries:[%v,%v]",
 				i, rf.logEntries.GetFirstLogEntryIndex(), rf.logEntries.GetLastLogEntryIndex())
+			panic("")
 		}
 		rf.applyTransCh <- ApplyMsg{
 			CommandValid: true,
@@ -606,7 +612,8 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 
 	//如果leader发来的PrevLogIndex，已经被我们snapshot了，因为snapshot肯定被提交过了，而leader一定匹配所有的已经提交的日志，
 	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
-	rf.logEntries.Logs = args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]
+	rf.logEntries.Logs = append(rf.logEntries.Logs[:1], args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]...)
+	rf.log(dLog, "doAppendEntry use leader's logs, change lastLogIndex: %v -> %v", lastLogEntryIdx, rf.logEntries.GetLastLogEntryIndex())
 	return true
 }
 
