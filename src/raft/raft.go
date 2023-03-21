@@ -182,7 +182,9 @@ func (rf *Raft) readPersist(data []byte) {
 	atomic.StoreInt32(&rf.currentTerm, int32(term))
 	rf.votedFor = votedFor
 	rf.logEntries = logs
-	rf.log(dPersist, "successful loaded from persist")
+	if rf.logEntries != nil {
+		rf.log(dPersist, "successful loaded from persist, logs:%v", rf.logEntries.String())
+	}
 }
 
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
@@ -513,7 +515,6 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 	oldIdx := rf.getLastCommitIdx()
 	newCommitIdx := tmp[len(rf.peers)/2]
 
-	//todo bug 明天看一下。。
 	if entry := rf.logEntries.Get(newCommitIdx); entry != nil && entry.Term != rf.getTerm() {
 		//卡了一天的bug。。5.4.2 leader只能按照超过半数来提交本term的日志，而不能提交之前term的日志
 		//换句话说，如果当前更新到的commitIndex所对应的log不是我们本term添加上的，那么就不应该更新
@@ -615,6 +616,9 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
 	rf.logEntries.Logs = append(rf.logEntries.Logs[:1], args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]...)
 	rf.log(dLog, "doAppendEntry use leader's logs, change lastLogIndex: %v -> %v", lastLogEntryIdx, rf.logEntries.GetLastLogEntryIndex())
+	if lastLogEntryIdx != rf.logEntries.GetLastLogEntryIndex() {
+		rf.persist()
+	}
 	rf.thisTermMatchedLeader = true
 	return true
 }
