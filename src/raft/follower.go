@@ -10,34 +10,6 @@ func (rf FollowerStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapsho
 	return
 }
 
-func (rf FollowerStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
-	myTerm := rf.getTerm()
-	reply.Term = myTerm
-	if args.Term != myTerm {
-		if myTerm > args.Term {
-			return nil
-		}
-
-		if myTerm < args.Term {
-			rf.setTerm(args.Term)
-		}
-	}
-
-	if args.LastIncludeIndex <= rf.logEntries.GetLastLogEntryIndex() {
-		//如果已经安装了，那么不需要重复安装快照
-		return nil
-	}
-
-	rf.applyTransCh <- ApplyMsg{
-		CommandValid:  false,
-		SnapshotValid: true,
-		Snapshot:      args.Data,
-		SnapshotTerm:  args.LastIncludeTerm,
-		SnapshotIndex: args.LastIncludeIndex,
-	}
-	return nil
-}
-
 func (rf FollowerStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	commandWithNotify.finishWithError()
 }

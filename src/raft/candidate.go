@@ -12,11 +12,6 @@ func (rf CandidateStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapsh
 	return
 }
 
-func (rf CandidateStateHandler) HandleInstallSnapshot(args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (rf CandidateStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
 	commandWithNotify.finishWithError()
 }
@@ -35,7 +30,7 @@ func (rf CandidateStateHandler) OnQuitState() {
 	rf.clearCandidateCh()
 }
 
-//清空所有的竞选有关的chan
+// 清空所有的竞选有关的chan
 func (rf CandidateStateHandler) clearCandidateCh() {
 	for {
 		select {
@@ -134,7 +129,7 @@ func (rf CandidateStateHandler) HandleRequestVote(args *RequestVoteArgs, reply *
 	return nil
 }
 
-//HandleNeedElection 开始选举，向所有的除了自己的server发送请求，然后去主线程等待回复
+// HandleNeedElection 开始选举，向所有的除了自己的server发送请求，然后去主线程等待回复
 func (rf CandidateStateHandler) HandleNeedElection() {
 	rf.incTerm()
 	myTerm := rf.getTerm()
