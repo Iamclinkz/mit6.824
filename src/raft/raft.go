@@ -214,6 +214,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 	//todo 这里要不要让上层调用阻塞一下？
+	rf.log(dSnap, "service snapshots until index:%v", index)
 	replyCh := rf.pushSnapshot(index, snapshot)
 	<-replyCh
 }

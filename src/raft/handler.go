@@ -39,7 +39,7 @@ type StateHandler interface {
 	HandleCondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool
 }
 
-//StateHandlerBase 内部持有了三种handler共用的结构
+// StateHandlerBase 内部持有了三种handler共用的结构
 type StateHandlerBase struct {
 	*Raft
 }
@@ -52,13 +52,20 @@ func (rf *Raft) initHandler() {
 }
 
 func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
-	myLastLogEntryIndex := rf.getLastLogEntryIndex()
-	if req.idx <= myLastLogEntryIndex {
+	myLastIncludeIndex := rf.logEntries.LastIncludeIndex
+	myLastLogEntryIndex := rf.logEntries.GetLastLogEntryIndex()
+	if req.idx <= myLastIncludeIndex {
 		//如果以前已经压缩过了，那么直接返回
+		rf.log(dSnap, "try to snapshot until:%v, but current myLastIncludeIndex:%v", req.idx, myLastIncludeIndex)
 		return
 	}
 
-	if req.idx >= myLastLogEntryIndex {
+	if req.idx > rf.lastApplied {
+		rf.log(dError, "try to snapshot log entries, which has not been applied:%v", req.idx)
+		panic("")
+	}
+
+	if req.idx <= myLastLogEntryIndex {
 		if entry := rf.logEntries.Get(req.idx); entry == nil {
 			rf.log(dError, "should no Snapshot Logs which have not been appended! current lastIdx:%v, req.idx:%v",
 				myLastLogEntryIndex, req.idx)
@@ -68,6 +75,9 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 			rf.logEntries.Reinit(entry.Term, myLastLogEntryIndex)
 			rf.log(dSnap, "new snapshot: [%v,%v]", myLastLogEntryIndex, req.idx)
 		}
+	} else {
+		rf.log(dError, "try to snapshot log entries, which has not been appended:%v", req.idx)
+		panic("")
 	}
 }
 
