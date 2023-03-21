@@ -589,7 +589,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 
 		//如果是匹配的，那么直接截断匹配的日志的后面的内容，然后替换成leader的entry
 		//截断日志
-		newLastLogEntryIdx := rf.logEntries.RemoveCommandUntil(args.PrevLogTerm)
+		newLastLogEntryIdx := rf.logEntries.RemoveCommandUntil(args.PrevLogIndex)
 		if lastLogEntryIdx != newLastLogEntryIdx {
 			rf.log(dLog2, "delete entry: %v -> %v", newLastLogEntryIdx+1, lastLogEntryIdx)
 			persist = true

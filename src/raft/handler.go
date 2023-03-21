@@ -73,7 +73,7 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 		} else {
 			rf.snapshot = req.snapshot
 			rf.logEntries.Reinit(entry.Term, myLastLogEntryIndex)
-			rf.log(dSnap, "new snapshot: [%v,%v]", myLastLogEntryIndex, req.idx)
+			rf.log(dSnap, "new logEntries: [%v,%v]", req.idx, myLastLogEntryIndex)
 		}
 	} else {
 		rf.log(dError, "try to snapshot log entries, which has not been appended:%v", req.idx)
