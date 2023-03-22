@@ -10,9 +10,12 @@ func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotR
 	if msg.reply.Term > rf.getTerm() {
 		rf.setTerm(msg.reply.Term)
 		rf.setState(Follower)
+		return
 	}
 
 	if msg.args.LastIncludeIndex <= rf.nextIndex[msg.serverID] {
+		rf.log(dWarn,"receive overTime installSnapshot reply, current next:%v, lastIncludeIdx from reply:%v",
+			rf.nextIndex[msg.serverID],msg.args.LastIncludeIndex)
 		return
 	}
 
@@ -103,7 +106,8 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	if entry == nil {
 		//如果回退到lastLogEntries的后一条（最后一条Log中的日志）的term仍然 == 不匹配的term，那么直接发快照
 		rf.nextIndex[peerID] = rf.logEntries.GetLastIncludeIndex()
-		rf.log(dLeader, "receive fail AppendEntries reply from S%v, unMatchIdx:%v change nextIdx to myLastIncludeIndex:%v and install snapshot",
+		rf.log(dLeader, "receive fail AppendEntries reply from S%v, " +
+			"unMatchIdx:%v change nextIdx to myLastIncludeIndex:%v and install snapshot",
 			peerID, msg.args.PrevLogIndex, rf.nextIndex[peerID])
 		return
 	}

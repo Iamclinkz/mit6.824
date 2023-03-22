@@ -110,6 +110,8 @@ func (rf StateHandlerBase) HandleInstallSnapshot(args *InstallSnapshotRequest, r
 		}
 	}
 
+	rf.reSetHeartBeat()
+
 	if args.LastIncludeIndex <= rf.logEntries.GetLastLogEntryIndex() {
 		//如果已经安装了，那么不需要重复安装快照
 		return nil

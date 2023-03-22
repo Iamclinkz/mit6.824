@@ -297,9 +297,11 @@ type InstallSnapshotReplyMsg struct {
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 	if !ok || reply.Error != "" {
+		rf.log(dWarn,"receive InstallSnapshot error, from S%v, ok:%v, reply.Error:%v",server,ok,reply.Error)
 		return
 	}
 
+	rf.log(dTrace,"receive InstallSnapshot reply from S%v, LastIncludeIndex:%v",server,args.LastIncludeIndex)
 	rf.installSnapshotReplyCh <- &InstallSnapshotReplyMsg{
 		args:     args,
 		reply:    reply,
