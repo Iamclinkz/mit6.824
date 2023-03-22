@@ -56,12 +56,12 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 
 		//这里rpc可能乱序，所以需要保证一手小的不能覆盖大的
 		//如果msg中的条目都匹配成功了，但是以前就匹配过了，那么可能是rpc乱序了，也可能是本次没有增加新的条目，总之我们不做处理
-		if nextIndexFromReply <= rf.nextIndex[peerID] {
+		if nextIndexFromReply < rf.nextIndex[peerID] {
 			rf.log(dWarn, "S%v try to reduce nextIndex: %v -> %v", peerID, rf.nextIndex[peerID], nextIndexFromReply)
 			return
 		}
 
-		if nextMatchFromReply <= rf.matchIndex[peerID] {
+		if nextMatchFromReply < rf.matchIndex[peerID] {
 			rf.log(dWarn, "S%v try to reduce matchIndex: %v -> %v", peerID, rf.matchIndex[peerID], nextMatchFromReply)
 			return
 		}
