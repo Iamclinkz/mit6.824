@@ -17,6 +17,7 @@ func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotR
 	}
 
 	rf.nextIndex[msg.serverID] = msg.args.LastIncludeIndex + 1
+	rf.matchIndex[msg.serverID] = msg.args.LastIncludeIndex
 	rf.log(dSnap, "revive success InstallSnapshot msg from S%v, update nextIndex:%v",
 		msg.serverID, msg.args.LastIncludeIndex)
 }
@@ -47,6 +48,8 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	}
 
 	if msg.reply.Success {
+		rf.log(dLeader, "receive success AppendEntriesMsg from S%v, PrevLogIndex:%v, LogLen:%v",
+			msg.args.PrevLogIndex, len(msg.args.Entries))
 		//如果成功，那么设置matchIndex和nextIndex
 		nextMatchFromReply := msg.args.PrevLogIndex + len(msg.args.Entries)
 		nextIndexFromReply := nextMatchFromReply + 1
