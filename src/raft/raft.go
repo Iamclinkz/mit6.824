@@ -183,6 +183,8 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.votedFor = votedFor
 	rf.logEntries = logs
 	if rf.logEntries != nil {
+		rf.commitIndex = rf.logEntries.GetLastIncludeIndex()
+		rf.lastApplied = rf.logEntries.GetLastIncludeIndex()
 		rf.log(dPersist, "successful loaded from persist, logs:%v", rf.logEntries.String())
 	}
 }
