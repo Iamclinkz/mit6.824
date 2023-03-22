@@ -13,8 +13,8 @@ func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotR
 		return
 	}
 
-	if msg.args.LastIncludeIndex <= rf.nextIndex[msg.serverID] {
-		rf.log(dWarn,"receive overTime installSnapshot reply, current next:%v, lastIncludeIdx from reply:%v",
+	if msg.args.LastIncludeIndex < rf.nextIndex[msg.serverID] {
+		rf.log(dWarn,"receive overTime installSnapshot reply from S%v, myNext:%v, lastIncludeIdx from reply:%v",
 			rf.nextIndex[msg.serverID],msg.args.LastIncludeIndex)
 		return
 	}
@@ -128,7 +128,8 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 		panic("")
 	}
 
-	rf.log(dLeader, "receive fail AppendEntries reply from S%v, unMatchIdx:%v fallback nextIdx to myLastIncludeIndex:%v",
+	rf.log(dLeader, "receive fail AppendEntries reply from S%v, " +
+		"unMatchIdx:%v fallback nextIdx to myLastIncludeIndex:%v",
 		peerID, msg.args.PrevLogIndex, rf.nextIndex[peerID])
 }
 
