@@ -52,7 +52,7 @@ func (rf *Raft) initHandler() {
 }
 
 func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
-	myLastIncludeIndex := rf.logEntries.GetLastLogEntryIndex()
+	myLastIncludeIndex := rf.logEntries.GetLastIncludeIndex()
 	myLastLogEntryIndex := rf.logEntries.GetLastLogEntryIndex()
 	if req.idx <= myLastIncludeIndex {
 		//如果以前已经压缩过了，那么直接返回
