@@ -523,7 +523,7 @@ func (rf *Raft) updateCommitIndex() (updated bool) {
 
 	if newCommitIdx > rf.getLastCommitIdx() {
 		rf.setLastCommitIdx(newCommitIdx)
-		rf.log(dCommit, "update current commitIndex: %v -> %v", oldIdx, rf.getLastCommitIdx())
+		rf.log(dCommit, "update current commitIndex: %v -> %v", oldIdx+1, rf.getLastCommitIdx())
 		return true
 	}
 
@@ -614,7 +614,7 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 
 	//如果leader发来的PrevLogIndex，已经被我们snapshot了，因为snapshot肯定被提交过了，而leader一定匹配所有的已经提交的日志，
 	//所以自己跟leader的日志一定是匹配的，这种情况下，只需要截断掉我们当前的所有日志，替换成leader的日志即可
-	rf.logEntries.Logs = append(rf.logEntries.Logs[:1], args.Entries[rf.logEntries.LastIncludeIndex-args.PrevLogIndex:]...)
+	rf.logEntries.Logs = append(rf.logEntries.Logs[:1], args.Entries[rf.logEntries.GetLastIncludeIndex()-args.PrevLogIndex:]...)
 	rf.log(dLog, "doAppendEntry use leader's logs, change lastLogIndex: %v -> %v", lastLogEntryIdx, rf.logEntries.GetLastLogEntryIndex())
 	if lastLogEntryIdx != rf.logEntries.GetLastLogEntryIndex() {
 		rf.persist()

@@ -52,7 +52,7 @@ func (rf *Raft) initHandler() {
 }
 
 func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
-	myLastIncludeIndex := rf.logEntries.LastIncludeIndex
+	myLastIncludeIndex := rf.logEntries.GetLastLogEntryIndex()
 	myLastLogEntryIndex := rf.logEntries.GetLastLogEntryIndex()
 	if req.idx <= myLastIncludeIndex {
 		//如果以前已经压缩过了，那么直接返回
@@ -72,8 +72,9 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 			panic("")
 		} else {
 			rf.snapshot = req.snapshot
-			rf.logEntries.Reinit(entry.Term, myLastLogEntryIndex)
-			rf.log(dSnap, "new logEntries: [%v,%v]", req.idx, myLastLogEntryIndex)
+			rf.logEntries.Reinit(entry.Term, req.idx)
+			rf.log(dSnap, "snapshot log entries:[0,%v], new logEntries: [%v,%v]",
+				req.idx, req.idx+1, myLastLogEntryIndex)
 		}
 	} else {
 		rf.log(dError, "try to snapshot log entries, which has not been appended:%v", req.idx)

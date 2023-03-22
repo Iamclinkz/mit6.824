@@ -178,7 +178,7 @@ func (rf *Raft) sendHeartBeat() {
 	myTerm := rf.getTerm()
 	for serverID, _ := range rf.peers {
 		if serverID != rf.me {
-			if rf.nextIndex[serverID] > rf.logEntries.LastIncludeIndex {
+			if rf.nextIndex[serverID] > rf.logEntries.GetLastIncludeIndex() {
 				//如果给serverID发送的第一条日志，没有被压缩到快照，直接发送AppendEntries
 				//rf.logEntries.LastIncludeIndex 是被压缩的最后一条日志，比它大，说明没有被压缩
 				req := &AppendEntriesArgs{
@@ -186,7 +186,7 @@ func (rf *Raft) sendHeartBeat() {
 					LeaderId:     rf.me,
 					LeaderCommit: rf.getLastCommitIdx(),
 					PrevLogIndex: rf.nextIndex[serverID] - 1,
-					PrevLogTerm:  rf.logEntries.Logs[rf.nextIndex[serverID]-rf.logEntries.LastIncludeIndex-1].Term,
+					PrevLogTerm:  rf.logEntries.Logs[rf.nextIndex[serverID]-rf.logEntries.GetLastIncludeIndex()-1].Term,
 					Entries:      rf.logEntries.GetCopy(rf.nextIndex[serverID]),
 				}
 				rf.log(dLeader, "leader send entries to S%v, PrevLogIndex:%v, PrevLogTerm:%v, Len of Entries:%v",
@@ -197,7 +197,7 @@ func (rf *Raft) sendHeartBeat() {
 				req := &InstallSnapshotRequest{
 					Term:             myTerm,
 					LeaderID:         rf.me,
-					LastIncludeIndex: rf.logEntries.LastIncludeIndex,
+					LastIncludeIndex: rf.logEntries.GetLastIncludeIndex(),
 					LastIncludeTerm:  rf.logEntries.GetLastIncludeTerm(),
 					Data:             rf.snapshot,
 				}
