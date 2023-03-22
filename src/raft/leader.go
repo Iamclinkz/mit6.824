@@ -49,7 +49,7 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 
 	if msg.reply.Success {
 		rf.log(dLeader, "receive success AppendEntriesMsg from S%v, PrevLogIndex:%v, LogLen:%v",
-			msg.args.PrevLogIndex, len(msg.args.Entries))
+			msg.serverID, msg.args.PrevLogIndex, len(msg.args.Entries))
 		//如果成功，那么设置matchIndex和nextIndex
 		nextMatchFromReply := msg.args.PrevLogIndex + len(msg.args.Entries)
 		nextIndexFromReply := nextMatchFromReply + 1
@@ -88,54 +88,41 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	//最极端的情况，当回退到 rf.nextIndex[peerID] == rf.logEntries.LastIncludeIndex 时，说明我们当前的
 	//rf.logEntries.logs已经无法让follower匹配了，这种情况下，我们设置rf.nextIndex[peerID]为
 	//rf.logEntries.LastIncludeIndex 这样下次心跳的时候，发送安装快照rpc，而不是增加日志rpc。
-	//myLastIncludeIndex := rf.logEntries.LastIncludeIndex
-	//peerUnMatchIdx := rf.nextIndex[peerID]
-	//unMatchEntry := rf.logEntries.Get(peerUnMatchIdx)
-	//rf.log(dLeader, "receive fail reply from S%v, peer do not match:%v, my lastIncludeIndex:%v, myLog:%v",
-	//	peerID, peerUnMatchIdx, myLastIncludeIndex,rf.logEntries.String())
-	//if peerUnMatchIdx <= myLastIncludeIndex+1 || unMatchEntry == nil ||
-	//	rf.logEntries.GetLastIncludeTerm() == unMatchEntry.Term {
-	//	//如果当前已经无法再回退了（已经退到snapshot的最后一条），再或者匹配失败的term == LastIncludeTerm，
-	//	//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
-	//	rf.nextIndex[peerID] = myLastIncludeIndex
-	//	rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
-	//	return
-	//}
-	//
-	////回退到unMatchEntry.Term（不匹配的日志的term）的前一个term的最后一条
-	//term := unMatchEntry.Term
-	//start := peerUnMatchIdx - 1
-	//entry := rf.logEntries.Get(start)
-	//for entry != nil && entry.Term == term {
-	//	start--
-	//	entry = rf.logEntries.Get(start)
-	//}
-	//
-	////我们的日志中，当前是存在不匹配的日志的term之前的term的，我们去找该term的第一条
-	//if entry == nil {
-	//	//如果当前已经无法再回退了（已经退到snapshot的最后一条），
-	//	//我们直接放弃匹配，设置 rf.nextIndex[peerID] 为snapshot的最后一条，下个心跳发送安装rpc
-	//	rf.nextIndex[peerID] = myLastIncludeIndex
-	//	rf.log(dLeader, "receive fail reply from S%v, need to send install snapshot!", peerID)
-	//	return
-	//}
-	//
-	//term = entry.Term
-	//for entry != nil && entry.Term == term {
-	//	start--
-	//	entry = rf.logEntries.Get(start)
-	//}
-	//
-	//rf.nextIndex[peerID] = start + 1
-	rf.nextIndex[peerID]--
-	if rf.nextIndex[peerID] < rf.logEntries.GetLastIncludeIndex() {
+	start := rf.nextIndex[peerID] - 1
+	entry := rf.logEntries.Get(start)
+	term := entry.Term
+
+	for entry != nil && entry.Term == term {
+		start--
+		entry = rf.logEntries.Get(start)
+	}
+
+	if entry == nil {
+		//如果回退到lastLogEntries的后一条（最后一条Log中的日志）的term仍然 == 不匹配的term，那么直接发快照
 		rf.nextIndex[peerID] = rf.logEntries.GetLastIncludeIndex()
-		rf.log(dLeader, "receive fail reply from S%v, change nextIdx to myLastIncludeIndex:%v, install snapshot",
-			peerID, rf.nextIndex[peerID])
+		rf.log(dLeader, "receive fail AppendEntries reply from S%v, unMatchIdx:%v change nextIdx to myLastIncludeIndex:%v and install snapshot",
+			peerID, msg.args.PrevLogIndex, rf.nextIndex[peerID])
 		return
 	}
-	rf.log(dLeader, "receive fail reply from S%v, let nextIdx-- to:%v",
-		peerID, rf.nextIndex[peerID])
+
+	//当前的entry是和不匹配的Log的entry的term不一致的，上一个term的最后一条日志，代码执行到这里，一定不需要发送快照
+	term = entry.Term
+	start--
+	entry = rf.logEntries.Get(start)
+	for entry != nil && entry.Term == term {
+		start--
+		entry = rf.logEntries.Get(start)
+	}
+
+	rf.nextIndex[peerID] = start + 1
+
+	if rf.nextIndex[peerID] <= rf.logEntries.GetLastIncludeIndex() {
+		rf.log(dError, "should not send snapshot... program fault!")
+		panic("")
+	}
+
+	rf.log(dLeader, "receive fail AppendEntries reply from S%v, unMatchIdx:%v fallback nextIdx to myLastIncludeIndex:%v",
+		peerID, msg.args.PrevLogIndex, rf.nextIndex[peerID])
 }
 
 func (rf LeaderStateHandler) OnCandidateOverTimeTick() {
