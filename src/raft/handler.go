@@ -66,39 +66,32 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 	}
 
 	if req.idx <= myLastLogEntryIndex {
-		if entry := rf.logEntries.Get(req.idx); entry == nil {
-			rf.log(dError, "should no Snapshot Logs which have not been appended! current lastIdx:%v, req.idx:%v",
-				myLastLogEntryIndex, req.idx)
-			panic("")
-		} else {
-			rf.snapshot = req.snapshot
-			rf.logEntries.Reinit(entry.Term, req.idx)
-			rf.log(dSnap, "snapshot log entries:[0,%v], new logEntries: [%v,%v]",
-				req.idx, req.idx+1, myLastLogEntryIndex)
-		}
+		rf.snapshot = req.snapshot
+		rf.logEntries.Reinit(req.idx)
+		rf.log(dSnap, "snapshot log entries:[0,%v], new logEntries: [%v,%v]", req.idx, req.idx+1, myLastLogEntryIndex)
 	} else {
 		rf.log(dError, "try to snapshot log entries, which has not been appended:%v", req.idx)
 		panic("")
 	}
 }
 
-func (rf StateHandlerBase) HandleCondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
-	if lastIncludedIndex <= rf.commitIndex {
+func (rf StateHandlerBase) HandleCondInstallSnapshot(lastIncludedTerm int, newLastIncludedIndex int, snapshot []byte) bool {
+	if newLastIncludedIndex <= rf.commitIndex {
 		return false
 	}
 
-	if lastIncludedIndex <= rf.getLastLogEntryIndex() {
+	if newLastIncludedIndex < rf.getLastLogEntryIndex() {
 		rf.log(dError, "try to install snapshot which current log do not have, new snapshot last index:%v, current len:%v",
-			lastIncludedIndex, rf.getLastLogEntryIndex())
+			newLastIncludedIndex, rf.getLastLogEntryIndex())
 		panic("")
 	}
 
-	rf.logEntries.Reinit(lastIncludedTerm, lastIncludedIndex)
+	rf.logEntries.Reinit(newLastIncludedIndex)
 	rf.snapshot = snapshot
-	rf.commitIndex = lastIncludedIndex
-	rf.lastApplied = lastIncludedIndex
+	rf.commitIndex = newLastIncludedIndex
+	rf.lastApplied = newLastIncludedIndex
 	rf.log(dSnap, "CondInstallSnapshot success, current lastIncludedTerm, lastIncludedIndex, commitIdx & apply:%v",
-		lastIncludedIndex)
+		newLastIncludedIndex)
 	rf.persist()
 	return true
 }

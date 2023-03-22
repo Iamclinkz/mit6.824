@@ -339,7 +339,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	if rf.logEntries == nil {
 		rf.logEntries = NewLogEntries()
-		rf.logEntries.Reinit(-1, 0)
 	}
 
 	//rf.stopCandidateCh = make(chan struct{},1)
