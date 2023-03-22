@@ -566,6 +566,8 @@ func (rf *Raft) logEntriesNewerThanMe(otherLastLogEntryTerm, otherLastLogEntryIn
 func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 	//todo 看一手
 	if rf.thisTermMatchedLeader && args.PrevLogIndex+len(args.Entries) <= rf.getLastLogEntryIndex() {
+		rf.log(dLog2,"no need to append entries from S%v, because leader's lastLogIdx:%v, myLastLogIdx:%v",
+			args.PrevLogIndex+len(args.Entries),rf.getLastLogEntryIndex())
 		//如果我们当前已经跟leader匹配了，但是leader发的包仍然没有新的内容，这可能是因为leader没有append新的logEntry，
 		//也可能是因为rpc乱序，总之直接return
 		//args.PrevLogIndex + len(args.Entries) 的值是leader发来的最后一条日志在rf.logs中的index
@@ -586,6 +588,8 @@ func (rf *Raft) doAppendEntry(args *AppendEntriesArgs) bool {
 	if entry := rf.logEntries.Get(args.PrevLogIndex); entry != nil {
 		if entry.Term != args.PrevLogTerm {
 			//如果该entry当前没有被snapshot，且Term不匹配，那么说明自己一定跟leader对不上，直接返回false即可
+			rf.log(dLog2, "doAppendEntry failed because myTerm at index:%v is %v, but S%v is %v",
+				args.PrevLogIndex,entry.Term,args.LeaderId, args.PrevLogTerm)
 			return false
 		}
 

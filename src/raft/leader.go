@@ -22,7 +22,7 @@ func (rf LeaderStateHandler) OnInstallSnapshotRequestReply(msg *InstallSnapshotR
 	rf.nextIndex[msg.serverID] = msg.args.LastIncludeIndex + 1
 	rf.matchIndex[msg.serverID] = msg.args.LastIncludeIndex
 	rf.log(dSnap, "revive success InstallSnapshot msg from S%v, update nextIndex:%v",
-		msg.serverID, msg.args.LastIncludeIndex)
+		msg.serverID, rf.nextIndex[msg.serverID])
 }
 
 func (rf LeaderStateHandler) OnClientCmdArrive(commandWithNotify *CommandWithNotifyCh) {
