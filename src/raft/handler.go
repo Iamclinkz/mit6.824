@@ -67,7 +67,7 @@ func (rf StateHandlerBase) HandleSnapshot(req *SnapshotRequest) {
 
 	if req.idx <= myLastLogEntryIndex {
 		rf.snapshot = req.snapshot
-		rf.logEntries.Reinit(req.idx)
+		rf.logEntries.ReInitByLastIncludeIndex(req.idx)
 		rf.log(dSnap, "snapshot log entries:[0,%v], new logEntries: [%v,%v]", req.idx, req.idx+1, myLastLogEntryIndex)
 	} else {
 		rf.log(dError, "try to snapshot log entries, which has not been appended:%v", req.idx)
@@ -86,7 +86,7 @@ func (rf StateHandlerBase) HandleCondInstallSnapshot(lastIncludedTerm int, newLa
 		panic("")
 	}
 
-	rf.logEntries.Reinit(newLastIncludedIndex)
+	rf.logEntries.ReInitByIncludeIndexAndTerm(newLastIncludedIndex, lastIncludedTerm)
 	rf.snapshot = snapshot
 	rf.commitIndex = newLastIncludedIndex
 	rf.lastApplied = newLastIncludedIndex

@@ -167,9 +167,9 @@ type LogEntries struct {
 	Logs []*LogEntry
 }
 
-// Reinit 重建LogEntries，当前日志中必须有index为newLastIncludeIndex的日志，否则panic
+// ReInitByLastIncludeIndex 重建LogEntries，当前日志中必须有index为newLastIncludeIndex的日志，否则panic
 // 将[newLastIncludeIndex:]的日志保留，剩下的日志扔掉，并且重新赋值LastIncludeTerm和LastIncludeIndex
-func (es *LogEntries) Reinit(newLastIncludeIndex int) {
+func (es *LogEntries) ReInitByLastIncludeIndex(newLastIncludeIndex int) {
 	if entry := es.Get(newLastIncludeIndex); entry == nil {
 		log.Panicf("should no Snapshot Logs which have not been appended! current lastIdx:%v, request index:%v",
 			es.GetLastLogEntryIndex(), newLastIncludeIndex)
@@ -185,7 +185,18 @@ func (es *LogEntries) Reinit(newLastIncludeIndex int) {
 	}
 }
 
-// Reinit 使用两个参数，重建LogEntries
+// ReInitByIncludeIndexAndTerm 重建LogEntries， 将[newLastIncludeIndex:]的日志保留，剩下的日志扔掉，并且重新赋值LastIncludeTerm和LastIncludeIndex
+func (es *LogEntries) ReInitByIncludeIndexAndTerm(newLastIncludeIndex, newLastIncludeTerm int) {
+	tmp := make([]*LogEntry, 1)
+	tmp[0] = &LogEntry{
+		Command: nil,
+		Term:    newLastIncludeTerm,
+	}
+	tmp = append(tmp, es.Logs[newLastIncludeIndex-es.LastIncludeIndex+1:]...)
+	es.LastIncludeIndex = newLastIncludeIndex
+	es.Logs = tmp
+}
+
 func (es *LogEntries) String() string {
 	entriesStr := "["
 	for idx, entry := range es.Logs {
