@@ -112,7 +112,7 @@ func (rf StateHandlerBase) HandleInstallSnapshot(args *InstallSnapshotRequest, r
 
 	rf.reSetHeartBeat()
 
-	if args.LastIncludeIndex <= rf.logEntries.GetLastLogEntryIndex() {
+	if args.LastIncludeIndex <= rf.logEntries.GetLastIncludeTerm() {
 		//如果已经安装了，那么不需要重复安装快照
 		rf.log(dWarn,"receive repetitive InstallSnapshot from S%v, " +
 			"args.LastIncludeIndex:%v, myLastLogEntryIndex:%v",
