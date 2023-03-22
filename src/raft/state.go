@@ -192,7 +192,6 @@ func (es *LogEntries) ReInitByIncludeIndexAndTerm(newLastIncludeIndex, newLastIn
 		Command: nil,
 		Term:    newLastIncludeTerm,
 	}
-	tmp = append(tmp, es.Logs[newLastIncludeIndex-es.LastIncludeIndex+1:]...)
 	es.LastIncludeIndex = newLastIncludeIndex
 	es.Logs = tmp
 }

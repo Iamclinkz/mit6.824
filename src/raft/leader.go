@@ -90,7 +90,10 @@ func (rf LeaderStateHandler) OnAppendEntriesReply(msg *AppendEntriesReplyMsg) {
 	//rf.logEntries.LastIncludeIndex 这样下次心跳的时候，发送安装快照rpc，而不是增加日志rpc。
 	start := rf.nextIndex[peerID] - 1
 	entry := rf.logEntries.Get(start)
-	term := entry.Term
+	term := -1
+	if entry != nil{
+		term = entry.Term
+	}
 
 	for entry != nil && entry.Term == term {
 		start--
