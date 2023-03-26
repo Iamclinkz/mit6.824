@@ -45,7 +45,7 @@ type KVServer struct {
 	notifyChMap map[int]chan *applyReply //key为int64的OP.me，value为通知该OP完成的chan，如果error不为""，说明出错
 	closeCh     chan struct{}
 
-	finishedOpIDMap map[OpID]struct{} //用于记录某个操作是否已经被执行的map。防止重复执行
+	finishedOpIDMap map[int64]int64 //用于记录某个操作是否已经被执行的map。防止重复执行
 	persister       *raft.Persister
 }
 
@@ -196,7 +196,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 //AppendOrPut 如果以前做过，那么不重复做
 func (kv *KVServer) AppendOrPut(opType, key, value string, id OpID) {
-	if _, ok := kv.finishedOpIDMap[id]; ok {
+	if seqNum, ok := kv.finishedOpIDMap[id.ClientID]; ok && seqNum == id.ClientSequenceNum {
 		return
 	}
 
@@ -207,7 +207,7 @@ func (kv *KVServer) AppendOrPut(opType, key, value string, id OpID) {
 		kv.myKV[key] = value
 	}
 
-	kv.finishedOpIDMap[id] = struct{}{}
+	kv.finishedOpIDMap[id.ClientID] = id.ClientSequenceNum
 }
 
 //HandleApplyCh 监听来自raft的applyCh，并且应用到实际的kv数据库中
@@ -322,7 +322,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// You may need initialization code here.
 	if ok := kv.loadFromSnapshot(persister.ReadSnapshot()); !ok {
 		kv.myKV = make(map[string]string)
-		kv.finishedOpIDMap = make(map[OpID]struct{})
+		kv.finishedOpIDMap = make(map[int64]int64)
 	}
 	kv.applyCh = make(chan raft.ApplyMsg, 1024)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
