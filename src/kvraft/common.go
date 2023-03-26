@@ -4,22 +4,25 @@ const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongLeader = "ErrWrongLeader"
+	ErrTimeout     = "ErrTimeout"
 )
 
-type Err string
+//OpID 用于全局唯一的标识一个Op的结构
+type OpID struct {
+	ClientSequenceNum int64 //ClientID表示的客户端的对指令的编号
+	ClientID          int64 //唯一的表示一个客户端
+}
 
 // Put or Append
 type PutAppendArgs struct {
 	Key   string
 	Value string
-	Op    string // "Put" or "Append"
-	// You'll have to add definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+	Type  string // "Put" or "Append"
+	OpID  OpID   //来自客户端的，唯一的表示Op的ID
 }
 
 type PutAppendReply struct {
-	Err Err
+	Err string
 }
 
 type GetArgs struct {
@@ -28,6 +31,6 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Err   Err
+	Err   string
 	Value string
 }

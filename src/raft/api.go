@@ -15,6 +15,7 @@ type ApplyMsg struct {
 	CommandValid bool        //是否应该被apply
 	Command      interface{} //被apply的指令本身
 	CommandIndex int         //指令的index
+	CommandTerm  int         //for kvraft:这条指令被append的时候的term是多少
 
 	// For 2D:
 	SnapshotValid bool
@@ -297,11 +298,11 @@ type InstallSnapshotReplyMsg struct {
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotRequest, reply *InstallSnapshotRequestReply) {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 	if !ok || reply.Error != "" {
-		rf.log(dWarn,"receive InstallSnapshot error, from S%v, ok:%v, reply.Error:%v",server,ok,reply.Error)
+		rf.log(dWarn, "receive InstallSnapshot error, from S%v, ok:%v, reply.Error:%v", server, ok, reply.Error)
 		return
 	}
 
-	rf.log(dTrace,"receive InstallSnapshot reply from S%v, LastIncludeIndex:%v",server,args.LastIncludeIndex)
+	rf.log(dTrace, "receive InstallSnapshot reply from S%v, LastIncludeIndex:%v", server, args.LastIncludeIndex)
 	rf.installSnapshotReplyCh <- &InstallSnapshotReplyMsg{
 		args:     args,
 		reply:    reply,

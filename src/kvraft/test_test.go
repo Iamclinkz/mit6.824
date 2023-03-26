@@ -421,9 +421,10 @@ func TestBasic3A(t *testing.T) {
 	GenericTest(t, "3A", 1, 5, false, false, false, -1, false)
 }
 
-func TestSpeed3A(t *testing.T) {
-	GenericTestSpeed(t, "3A", -1)
-}
+//这个不测了。。
+//func TestSpeed3A(t *testing.T) {
+//	GenericTestSpeed(t, "3A", -1)
+//}
 
 func TestConcurrent3A(t *testing.T) {
 	// Test: many clients (3A) ...

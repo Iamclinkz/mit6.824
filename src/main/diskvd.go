@@ -28,7 +28,7 @@ func usage() {
 }
 
 func main() {
-	var gid int64 = -1     // my replica group ID
+	var gid int64 = -1     // my replica group me
 	masters := []string{}  // ports of shardmasters
 	replicas := []string{} // ports of servers in my replica group
 	me := -1               // my index in replicas[]
