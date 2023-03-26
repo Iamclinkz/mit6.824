@@ -127,14 +127,25 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				continue
 			}
 
-			if reply.Err != OK {
-				Log("Clerk(%v) get request to S%v has failed, reason:%v", ck.me, i, reply.Err)
-				continue
-			}
+			switch reply.Err {
+			case OK:
+				Log("Clerk(%v) get request to S%v has ok", ck.me, i)
+				ck.SetLeaderID(i)
+				return
 
-			Log("Clerk(%v) get request to S%v has ok", ck.me, i)
-			ck.SetLeaderID(i)
-			return
+			case ErrWrongLeader:
+				Log("Clerk(%v) get request to S%v has failed because sent to wrong leader", ck.me, i)
+				continue
+
+			case ErrNoKey:
+				Log("Clerk(%v) get request to S%v success, but no such key", ck.me, i)
+				ck.SetLeaderID(i)
+				return
+
+			case ErrTimeout:
+				Log("Clerk(%v) get request to S%v failed, because of timeout", ck.me, i)
+				i--
+			}
 		}
 
 		leaderID = 0
