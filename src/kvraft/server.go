@@ -196,7 +196,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 //AppendOrPut 如果以前做过，那么不重复做
 func (kv *KVServer) AppendOrPut(opType, key, value string, id OpID) {
-	if seqNum, ok := kv.finishedOpIDMap[id.ClientID]; ok && seqNum == id.ClientSequenceNum {
+	if seqNum, ok := kv.finishedOpIDMap[id.ClientID]; ok && seqNum >= id.ClientSequenceNum {
 		return
 	}
 
