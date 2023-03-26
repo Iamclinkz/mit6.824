@@ -81,9 +81,10 @@ func (rf StateHandlerBase) HandleCondInstallSnapshot(lastIncludedTerm int, newLa
 	}
 
 	if newLastIncludedIndex < rf.getLastLogEntryIndex() {
-		rf.log(dError, "try to install snapshot which current log do not have, new snapshot last index:%v, current len:%v",
-			newLastIncludedIndex, rf.getLastLogEntryIndex())
-		panic("")
+		//rf.log(dError, "try to install snapshot which current log do not have, new snapshot last index:%v, current len:%v",
+		//	newLastIncludedIndex, rf.getLastLogEntryIndex())
+		//panic("")
+		return false
 	}
 
 	rf.logEntries.ReInitByIncludeIndexAndTerm(newLastIncludedIndex, lastIncludedTerm)
@@ -114,9 +115,9 @@ func (rf StateHandlerBase) HandleInstallSnapshot(args *InstallSnapshotRequest, r
 
 	if args.LastIncludeIndex <= rf.logEntries.GetLastIncludeTerm() {
 		//如果已经安装了，那么不需要重复安装快照
-		rf.log(dWarn,"receive repetitive InstallSnapshot from S%v, " +
+		rf.log(dWarn, "receive repetitive InstallSnapshot from S%v, "+
 			"args.LastIncludeIndex:%v, myLastLogEntryIndex:%v",
-			args.LeaderID,args.LastIncludeIndex,rf.logEntries.GetLastLogEntryIndex())
+			args.LeaderID, args.LastIncludeIndex, rf.logEntries.GetLastLogEntryIndex())
 		return nil
 	}
 
@@ -127,7 +128,7 @@ func (rf StateHandlerBase) HandleInstallSnapshot(args *InstallSnapshotRequest, r
 		SnapshotTerm:  args.LastIncludeTerm,
 		SnapshotIndex: args.LastIncludeIndex,
 	}
-	rf.log(dSnap,"success handle InstallSnapshot from S%v,LastIncludeIndex:%v, pushed to applyCh",
-		args.LeaderID,args.LastIncludeIndex)
+	rf.log(dSnap, "success handle InstallSnapshot from S%v,LastIncludeIndex:%v, pushed to applyCh",
+		args.LeaderID, args.LastIncludeIndex)
 	return nil
 }
