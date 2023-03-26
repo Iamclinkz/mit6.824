@@ -9,7 +9,7 @@ import (
 import "crypto/rand"
 import "math/big"
 
-const DoLog = false
+const DoLog = true
 
 func Log(format string, a ...interface{}) {
 	if DoLog {

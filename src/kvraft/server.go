@@ -46,6 +46,7 @@ type KVServer struct {
 	closeCh     chan struct{}
 
 	finishedOpIDMap map[OpID]struct{} //用于记录某个操作是否已经被执行的map。防止重复执行
+	persister       *raft.Persister
 }
 
 //applyReply HandleApplyCh go程回复的，对于某次rpc投送的内容的回复
@@ -220,23 +221,37 @@ func (kv *KVServer) HandleApplyCh() {
 	for !kv.killed() {
 		select {
 		case msg = <-kv.applyCh:
-			if op, ok = msg.Command.(KVServerOp); !ok || !msg.CommandValid {
-				kv.log(dError, "can not convert msg.Command to op")
-			}
 			kv.log(dCommit, "receive new commit: %+v", msg)
+			if msg.SnapshotValid {
+				//如果是压缩日志请求，那么执行压缩日志
+				if ok := kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot); ok {
+					kv.loadFromSnapshot(msg.Snapshot)
+				}
+				continue
+			}
+
+			//检查是否可以转换程KVServerOp，如果不可以则报错
+			if op, ok = msg.Command.(KVServerOp); !ok {
+				kv.log(dError, "receive msg which can not convert to KVServerOp")
+				continue
+			}
+
+			//如果是普通的日志
 			switch op.Type {
 			case "Get":
+				//如果是get，不记录到finishedOpIDMap中，直接执行
 				replyValue = kv.myKV[op.K]
 			default:
+				//记录 + 执行
 				kv.AppendOrPut(op.Type, op.K, op.V, op.ID)
 				replyValue = ""
 			}
 
 			if term, isLeader := kv.rf.GetState(); isLeader && term == msg.CommandTerm {
-				//如果我是leader，并且command的term等于当前的term，说明是我提交的，一定可以在我的notifyChMap中找到
+				//如果我是leader，并且command的term等于当前的term，说明是我的rpc过程中调用start提交的，需要给我的rpc一个回复
 				kv.notifyChMu.Lock()
 				if ch := kv.notifyChMap[msg.CommandIndex]; ch == nil {
-					panic("should not be nil!")
+					//有可能从故障中恢复时，由于没有缓存notifyMap，所以notifyMap被重置，这里也不会取的出内容
 				} else {
 					ch <- &applyReply{
 						ok:    true,
@@ -245,6 +260,12 @@ func (kv *KVServer) HandleApplyCh() {
 					kv.log(dCommit, "successful pushed applyReply to notifyCh, idx:%v", msg.CommandIndex)
 					kv.notifyChMu.Unlock()
 				}
+			}
+
+			//检查一手raft的日志是不是过量，如果过量，需要压缩一个快照，并且用快照代替原来的日志
+			if kv.maxraftstate > 0 && kv.persister.RaftStateSize() >= kv.maxraftstate {
+				snapshot := kv.makeSnapshot()
+				kv.rf.Snapshot(msg.CommandIndex, snapshot)
 			}
 		case <-kv.closeCh:
 			//todo 清理一下
@@ -299,18 +320,19 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
-
+	if ok := kv.loadFromSnapshot(persister.ReadSnapshot()); !ok {
+		kv.myKV = make(map[string]string)
+		kv.finishedOpIDMap = make(map[OpID]struct{})
+	}
 	kv.applyCh = make(chan raft.ApplyMsg, 1024)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-
+	kv.persister = persister
 	// You may need initialization code here.
 
 	//todo 初始化各种ch
 	kv.notifyChMu = sync.Mutex{}
 	kv.notifyChMap = make(map[int]chan *applyReply)
 	kv.closeCh = make(chan struct{})
-	kv.myKV = make(map[string]string)
-	kv.finishedOpIDMap = make(map[OpID]struct{})
 
 	go kv.HandleApplyCh()
 	return kv

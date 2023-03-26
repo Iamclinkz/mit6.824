@@ -144,8 +144,9 @@ func (rf *Raft) persist() {
 	}
 
 	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
-	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v", rf.getVotedFor(), rf.logEntries.Len())
+	rf.persister.SaveStateAndSnapshot(data, rf.snapshot)
+	rf.log(dPersist, "successfully persisted information, votedFor:%v, logLen:%v, snapshotLen:%v",
+		rf.getVotedFor(), rf.logEntries.Len(), len(rf.snapshot))
 }
 
 // restore previously persisted state.
