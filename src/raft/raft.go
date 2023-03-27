@@ -332,6 +332,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.snapshot = persister.ReadSnapshot()
 	rf.appendEntriesReqCh = make(chan *rpcChMsg)
 	rf.needHeartBeat = make(chan struct{})
 	rf.applyCh = applyCh
