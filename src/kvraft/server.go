@@ -17,18 +17,21 @@ type KVServerOp struct {
 	V    string
 }
 
-//KVServer 可以看raft交互图：http://nil.csail.mit.edu/6.824/2021/notes/raft_diagram.pdf
-//每一个 KVServer 表示一个kv数据库实体，逻辑上是一个状态机。即如果对所有的分布式kv数据库，依次的执行同样的命令，那么最终
-//所有的数据库都是一致的。每个 KVServer 关联了一个 raft 实体，KVServer们并不直接彼此交流，而是通过关联的raft。通过raft.Start()
-//向raft输入希望同步的，对状态机的指令，并且从 raft.applyCh中拿到指令，并按照顺序输入的状态机中。
-//按照向上暴露的功能来说，Client（即Clerk）可以通过调用 KVServer 的向外暴露的rpc，对数据库实体进行crud操作。
-//碍于KVServer的功能实现，客户端执行如果希望执行某个操作，需要调用 KVServer 的rpc，如果这个rpc调用成功，那么一定成功，而如果失败，
-//则可能是因为超时，KVServer的rpc返回，但是实际上返回后，KVServer执行成功（即rpc返回失败，但是实际上执行成功）。这种情况下，
-//Client（即Clerk）和KVServer均需要做额外处理：
-//对于Client，如果rpc返回处理失败，需要重新的向另一个server提交请求，直到在某个server处理成功。
-//对于KVServer，应该让Client对请求编号，并且将编号记录，防止同一个编号执行两遍。
-//一开始考虑过，让Clerk不编号，放到KVServer中，让某个来自Clerk的指令，执行成功一定返回true，执行失败一定返回false，后来感觉实现不了。。。
-//所以没办法，只能在Clerk处给每个希望执行的指令编号
+// KVServer 可以看raft交互图：http://nil.csail.mit.edu/6.824/2021/notes/raft_diagram.pdf
+// 每一个 KVServer 表示一个kv数据库实体，逻辑上是一个状态机。即如果对所有的分布式kv数据库，依次的执行同样的命令，那么最终
+// 所有的数据库都是一致的。每个 KVServer 关联了一个 raft 实体，KVServer们并不直接彼此交流，而是通过关联的raft。通过raft.Start()
+// 向raft输入希望同步的，对状态机的指令，并且从 raft.applyCh中拿到指令，并按照顺序输入的状态机中。
+// 按照向上暴露的功能来说，Client（即Clerk）可以通过调用 KVServer 的向外暴露的rpc，对数据库实体进行crud操作。
+// 碍于KVServer的功能实现，客户端执行如果希望执行某个操作，需要调用 KVServer 的rpc，如果这个rpc调用成功，那么一定成功，而如果失败，
+// 则可能是因为超时，KVServer的rpc返回，但是实际上返回后，KVServer执行成功（即rpc返回失败，但是实际上执行成功）。这种情况下，
+// Client（即Clerk）和KVServer均需要做额外处理：
+// * 对于Client，如果rpc返回处理失败，需要重新的向另一个server提交请求，直到在某个server处理成功。并且注意，为了方便客户端侧实现操作的线性，客户端
+// 应该同一时刻只能有一个在途rpc（否则多个rpc时序无法保证，例如客户端你希望执行get—>set，但是却set->get，和客户端的期望不符合）。所以我们要求客户端
+// 只能单线程调用，并且调用rpc后，如果不成功，那么会轮询直到成功为止。并且给客户端的rpc请求编号（sequenceNum），从小到大递增，只有号较小的rpc执行结束，
+// 才能执行号较大的rpc。
+// * 对于KVServer，为了防止例如raft崩了，重复向applyCh提交相同指令的情况，应该将执行到的编号记录，防止同一个编号执行两遍，或者执行过去的指令。
+// （一开始考虑过，让Clerk不编号，放到KVServer中，让某个来自Clerk的指令，执行成功一定返回true，执行失败一定返回false，后来感觉实现不了。。。
+// 所以没办法，只能在Clerk处给每个希望执行的指令编号）
 type KVServer struct {
 	me      int
 	rf      *raft.Raft
@@ -289,6 +292,7 @@ func (kv *KVServer) Kill() {
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
 	// Your code here, if desired.
+	close(kv.closeCh)
 }
 
 func (kv *KVServer) killed() bool {
